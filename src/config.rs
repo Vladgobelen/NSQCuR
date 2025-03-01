@@ -18,8 +18,10 @@ struct AddonConfig {
 
 pub fn load_addons_config_blocking(client: &Client) -> Result<IndexMap<String, Addon>> {
     info!("Loading addons configuration");
-    
-    let response = client.get("https://raw.githubusercontent.com/Vladgobelen/NSQCu/refs/heads/main/addons.json").send()?;
+
+    let response = client
+        .get("https://raw.githubusercontent.com/Vladgobelen/NSQCu/refs/heads/main/addons.json")
+        .send()?;
     let text = response.text()?;
 
     #[derive(Debug, Deserialize)]
@@ -28,17 +30,24 @@ pub fn load_addons_config_blocking(client: &Client) -> Result<IndexMap<String, A
     }
 
     let config: Config = serde_json::from_str(&text)?;
-    
-    Ok(config.addons.into_iter().map(|(name, cfg)| {
-        (name.clone(), Addon {
-            name,
-            link: cfg.link,
-            description: cfg.description,
-            addon_type: cfg.addon_type,
-            source_path: cfg.source_path,
-            target_path: cfg.target_path,
+
+    Ok(config
+        .addons
+        .into_iter()
+        .map(|(name, cfg)| {
+            (
+                name.clone(),
+                Addon {
+                    name,
+                    link: cfg.link,
+                    description: cfg.description,
+                    addon_type: cfg.addon_type,
+                    source_path: cfg.source_path,
+                    target_path: cfg.target_path,
+                },
+            )
         })
-    }).collect())
+        .collect())
 }
 
 pub fn check_game_directory() -> Result<()> {
