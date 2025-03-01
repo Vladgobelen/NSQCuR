@@ -1,0 +1,26 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'  # Запускать при создании тега вида v1.0.0
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Сборка проекта
+        run: |
+          # Здесь команды для сборки (например, cargo build --release)
+          echo "Собираем проект..."
+
+      - name: Создание релиза
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            target/release/your_app.exe  # Укажите путь к собранным файлам
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
