@@ -23,10 +23,11 @@ fn main() -> Result<(), eframe::Error> {
 fn load_icon() -> Option<IconData> {
     let icon_bytes = include_bytes!("../resources/emblem.ico");
     let image = image::load_from_memory(icon_bytes).ok()?.to_rgba8();
+    
+    let width = image.width();
+    let height = image.height();
+    let rgba = image.into_raw();
 
-    Some(IconData {
-        rgba: image.into_raw(),
-        width: image.width(),
-        height: image.height(),
-    })
+    Some(IconData { rgba, width, height })
 }
+
