@@ -14,13 +14,13 @@ jobs:
       - name: Сборка проекта
         run: |
           # Здесь команды для сборки (например, cargo build --release)
-          echo "Собираем проект..."
+          echo "Собираем проект"
 
       - name: Создание релиза
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            target/release/nightwatch-updater.exe  # Укажите путь к собранным файлам
+            target/release/nightwatch-updater
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
