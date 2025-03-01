@@ -20,7 +20,7 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            target/release/your_app.exe  # Укажите путь к собранным файлам
+            target/release/nightwatch-updater.exe  # Укажите путь к собранным файлам
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
