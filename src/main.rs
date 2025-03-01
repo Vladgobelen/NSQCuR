@@ -3,16 +3,13 @@ mod config;
 mod modules;
 
 use crate::app::App;
-use eframe::IconData;
+use egui::IconData; // Исправлен импорт
 
 fn main() -> Result<(), eframe::Error> {
-    // Загрузка иконки
-    let icon = load_icon().expect("Failed to load icon");
-
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([400.0, 600.0])
-            .with_icon(icon),
+            .with_icon(load_icon().expect("Failed to load icon")),
         ..Default::default()
     };
 
@@ -25,14 +22,13 @@ fn main() -> Result<(), eframe::Error> {
 
 fn load_icon() -> Option<IconData> {
     let icon_bytes = include_bytes!("../resources/emblem.ico");
-
-    let image = image::load_from_memory(icon_bytes).ok()?.to_rgba8();
-
-    let (width, height) = (image.width(), image.height());
-
+    let image = image::load_from_memory(icon_bytes)
+        .ok()?
+        .to_rgba8();
+    
     Some(IconData {
         rgba: image.into_raw(),
-        width,
-        height,
+        width: image.width(),
+        height: image.height(),
     })
 }

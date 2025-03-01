@@ -42,7 +42,7 @@ impl App {
 
         let addons_with_state = addons
             .into_iter()
-            .map(|(name, addon)| {
+            .map(|(addon)| {
                 let installed = addon_manager::check_addon_installed(&addon);
                 (
                     addon,
