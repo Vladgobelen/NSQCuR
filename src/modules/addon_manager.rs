@@ -1,16 +1,19 @@
 use crate::app::{Addon, AddonState};
 use anyhow::Result;
-use fs_extra::dir::{copy, CopyOptions};
 use reqwest::blocking::Client;
 use std::fs::{self, File};
-use std::io::{Read, Write};
+use std::io::Read;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
-use tempfile;
 use zip::ZipArchive;
 
 pub fn check_addon_installed(addon: &Addon) -> bool {
-    let path = Path::new(&addon.target_path);
+    let path = if addon.delete_path.is_empty() {
+        Path::new(&addon.target_path)
+    } else {
+        Path::new(&addon.delete_path)
+    };
+
     let exists = path.exists();
     let correct_type = match addon.addon_type {
         0 | 2 => path.is_dir(),
@@ -38,61 +41,49 @@ fn handle_zip_install(
     addon: &Addon,
     state: Arc<Mutex<AddonState>>,
 ) -> Result<bool> {
-    let temp_dir = tempfile::tempdir()?;
-    let download_path = temp_dir.path().join("download.zip");
+    let target_path = Path::new(&addon.target_path);
+    let source_path = Path::new(&addon.source_path);
+
+    // Очистка целевой директории
+    if target_path.exists() {
+        fs::remove_dir_all(target_path)?;
+    }
+    fs::create_dir_all(target_path)?;
 
     // Загрузка архива
     let mut response = client.get(&addon.link).send()?;
     let total_size = response.content_length().unwrap_or(1);
-    let mut file = File::create(&download_path)?;
+    let mut reader = response.take(total_size);
 
-    let mut downloaded = 0;
-    let mut buf = [0u8; 8192];
-    while let Ok(bytes_read) = response.read(&mut buf) {
-        if bytes_read == 0 {
-            break;
-        }
-        file.write_all(&buf[..bytes_read])?;
-        downloaded += bytes_read as u64;
-        state.lock().unwrap().progress = downloaded as f32 / total_size as f32;
-    }
+    let mut archive = ZipArchive::new(&mut reader)?;
+    
+    for i in 0..archive.len() {
+        let mut file = archive.by_index(i)?;
+        let file_path = file.mangled_name();
 
-    // Распаковка во временную директорию
-    let extract_temp_dir = tempfile::tempdir()?;
-    let file = File::open(&download_path)?;
-    let mut archive = ZipArchive::new(file)?;
-    archive.extract(extract_temp_dir.path())?;
+        // Фильтрация по source_path
+        let relative_path = match source_path.to_str() {
+            Some("") => file_path,
+            _ => file_path
+                .strip_prefix(source_path)
+                .unwrap_or_else(|_| file_path),
+        };
 
-    let source_path = Path::new(&addon.source_path);
-    let source_dir = if addon.source_path.is_empty() {
-        extract_temp_dir.path().to_path_buf()
-    } else {
-        extract_temp_dir.path().join(source_path)
-    };
+        let outpath = target_path.join(relative_path);
 
-    let target_path = Path::new(&addon.target_path);
-
-    // Удалить старую версию
-    if target_path.exists() {
-        if target_path.is_dir() {
-            fs::remove_dir_all(target_path)?;
+        if file.is_dir() {
+            fs::create_dir_all(&outpath)?;
         } else {
-            fs::remove_file(target_path)?;
+            if let Some(parent) = outpath.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            let mut outfile = File::create(&outpath)?;
+            std::io::copy(&mut file, &mut outfile)?;
         }
-    }
 
-    // Создать целевую директорию
-    fs::create_dir_all(target_path)?;
-
-    // Копировать содержимое
-    let copy_options = CopyOptions::new()
-        .overwrite(true)
-        .content_only(addon.source_path.is_empty());
-
-    if source_dir.is_dir() {
-        copy(&source_dir, target_path, &copy_options)?;
-    } else {
-        anyhow::bail!("Source path is not a directory");
+        // Обновление прогресса
+        let pos = file.offset();
+        state.lock().unwrap().progress = pos as f32 / total_size as f32;
     }
 
     Ok(check_addon_installed(addon))
@@ -128,7 +119,11 @@ fn handle_file_install(
 }
 
 pub fn uninstall_addon(addon: &Addon) -> Result<bool> {
-    let path = Path::new(&addon.target_path);
+    let path = if addon.delete_path.is_empty() {
+        Path::new(&addon.target_path)
+    } else {
+        Path::new(&addon.delete_path)
+    };
 
     if path.exists() {
         match addon.addon_type {

@@ -14,6 +14,7 @@ pub struct Addon {
     pub addon_type: u8,
     pub source_path: String,
     pub target_path: String,
+    pub delete_path: String,
 }
 
 #[derive(Default)]
@@ -37,13 +38,11 @@ impl App {
         });
 
         let client = Client::new();
-        let addons =
-            config::load_addons_config_blocking(&client).expect("Failed to load addons config");
+        let addons = config::load_addons_config_blocking(&client).expect("Failed to load addons config");
 
         let addons_with_state = addons
             .into_iter()
             .map(|(_, addon)| {
-                // Исправлено: убраны лишние скобки и извлечён Addon
                 let installed = addon_manager::check_addon_installed(&addon);
                 (
                     addon,

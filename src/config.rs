@@ -13,6 +13,7 @@ struct AddonConfig {
     addon_type: u8,
     source_path: String,
     target_path: String,
+    delete_path: String,
 }
 
 pub fn load_addons_config_blocking(client: &Client) -> Result<IndexMap<String, Addon>> {
@@ -41,6 +42,7 @@ pub fn load_addons_config_blocking(client: &Client) -> Result<IndexMap<String, A
                     addon_type: cfg.addon_type,
                     source_path: cfg.source_path,
                     target_path: cfg.target_path,
+                    delete_path: cfg.delete_path,
                 },
             )
         })
