@@ -1,12 +1,11 @@
 use crate::config;
 use crate::modules::addon_manager;
 use egui::{CentralPanel, ProgressBar, ScrollArea};
-use log::{error, info};
 use reqwest::blocking::Client;
 use serde::Deserialize;
 use std::sync::{Arc, Mutex};
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
 pub struct Addon {
     pub name: String,
     pub link: String,
@@ -34,7 +33,6 @@ impl App {
         cc.egui_ctx.set_visuals(egui::Visuals::dark());
 
         config::check_game_directory().unwrap_or_else(|e| {
-            error!("{}", e);
             panic!("{}", e);
         });
 
@@ -46,7 +44,6 @@ impl App {
             .into_iter()
             .map(|(name, addon)| {
                 let installed = addon_manager::check_addon_installed(&addon);
-                info!("Addon '{}' installed: {}", name, installed);
                 (
                     addon,
                     Arc::new(Mutex::new(AddonState {
@@ -82,8 +79,6 @@ impl App {
 
         let client = self.client.clone();
         std::thread::spawn(move || {
-            info!("Starting operation for: {}", addon.name);
-
             let result = if desired_state {
                 addon_manager::install_addon(&client, &addon, state.clone())
             } else {
@@ -94,10 +89,8 @@ impl App {
             match result {
                 Ok(success) => {
                     state.target_state = Some(success == desired_state);
-                    info!("Operation status: {}", success);
                 }
-                Err(e) => {
-                    error!("Operation failed: {:?}", e);
+                Err(_) => {
                     state.target_state = Some(current_actual_state);
                 }
             }

@@ -1,6 +1,5 @@
 use crate::app::{Addon, AddonState};
 use anyhow::Result;
-use log::{info, warn};
 use reqwest::blocking::Client;
 use std::fs::{self, File};
 use std::io::{Read, Write};
@@ -26,8 +25,6 @@ pub fn install_addon(
     addon: &Addon,
     state: Arc<Mutex<AddonState>>,
 ) -> Result<bool> {
-    info!("Installing: {}", addon.name);
-
     match addon.addon_type {
         0 | 2 => handle_zip_install(client, addon, state),
         1 => handle_file_install(client, addon, state),
@@ -111,14 +108,13 @@ fn handle_file_install(
 }
 
 pub fn uninstall_addon(addon: &Addon) -> Result<bool> {
-    info!("Uninstalling: {}", addon.name);
     let path = Path::new(&addon.target_path);
 
     if path.exists() {
         match addon.addon_type {
             0 | 2 => fs::remove_dir_all(path)?,
             1 => fs::remove_file(path)?,
-            _ => warn!("Unknown addon type: {}", addon.addon_type),
+            _ => {}
         }
     }
 
