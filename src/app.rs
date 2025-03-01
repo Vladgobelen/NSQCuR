@@ -119,7 +119,7 @@ impl eframe::App for App {
                     let state = state.lock().unwrap();
                     let current_state = state
                         .target_state
-                        .unwrap_or_else(|| addon_manager::check_addon_installed(&addon));
+                        .unwrap_or_else(|| addon_manager::check_addon_installed(addon));
 
                     ui.horizontal(|ui| {
                         let response = ui.add_enabled_ui(!state.installing, |ui| {
