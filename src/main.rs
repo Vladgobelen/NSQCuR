@@ -3,7 +3,6 @@ mod config;
 mod modules;
 
 use crate::app::App;
-use eframe;
 
 fn main() -> Result<(), eframe::Error> {
     env_logger::init();
