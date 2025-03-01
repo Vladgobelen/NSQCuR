@@ -42,7 +42,8 @@ impl App {
 
         let addons_with_state = addons
             .into_iter()
-            .map(|(_, addon)| { // Исправлено: убраны лишние скобки и извлечён Addon
+            .map(|(_, addon)| {
+                // Исправлено: убраны лишние скобки и извлечён Addon
                 let installed = addon_manager::check_addon_installed(&addon);
                 (
                     addon,
