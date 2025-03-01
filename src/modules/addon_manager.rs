@@ -1,5 +1,6 @@
 use crate::app::{Addon, AddonState};
 use anyhow::Result;
+use fs_extra::dir::{copy, CopyOptions};
 use reqwest::blocking::Client;
 use std::fs::{self, File};
 use std::io::{Read, Write};
@@ -47,7 +48,6 @@ fn handle_zip_install(
 
     let mut downloaded = 0;
     let mut buf = [0u8; 8192];
-
     while let Ok(bytes_read) = response.read(&mut buf) {
         if bytes_read == 0 {
             break;
@@ -57,22 +57,42 @@ fn handle_zip_install(
         state.lock().unwrap().progress = downloaded as f32 / total_size as f32;
     }
 
-    // Распаковка
+    // Распаковка во временную директорию
+    let extract_temp_dir = tempfile::tempdir()?;
     let file = File::open(&download_path)?;
     let mut archive = ZipArchive::new(file)?;
+    archive.extract(extract_temp_dir.path())?;
 
-    let extract_path = PathBuf::from(".");
-    archive.extract(&extract_path)?;
+    let source_path = Path::new(&addon.source_path);
+    let source_dir = if addon.source_path.is_empty() {
+        extract_temp_dir.path().to_path_buf()
+    } else {
+        extract_temp_dir.path().join(source_path)
+    };
 
-    // Перемещение файлов
-    if !addon.source_path.is_empty() {
-        let source = extract_path.join(&addon.source_path);
-        let target = Path::new(&addon.target_path);
+    let target_path = Path::new(&addon.target_path);
 
-        if source.is_dir() {
-            fs::create_dir_all(target.parent().unwrap())?;
-            fs::rename(source, target)?;
+    // Удалить старую версию
+    if target_path.exists() {
+        if target_path.is_dir() {
+            fs::remove_dir_all(target_path)?;
+        } else {
+            fs::remove_file(target_path)?;
         }
+    }
+
+    // Создать целевую директорию
+    fs::create_dir_all(target_path)?;
+
+    // Копировать содержимое
+    let copy_options = CopyOptions::new()
+        .overwrite(true)
+        .content_only(addon.source_path.is_empty());
+
+    if source_dir.is_dir() {
+        copy(&source_dir, target_path, &copy_options)?;
+    } else {
+        anyhow::bail!("Source path is not a directory");
     }
 
     Ok(check_addon_installed(addon))
