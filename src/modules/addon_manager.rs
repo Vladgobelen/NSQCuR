@@ -56,7 +56,7 @@ fn handle_zip_install(
     let mut reader = response.take(total_size);
 
     let mut archive = ZipArchive::new(&mut reader)?;
-    
+
     for i in 0..archive.len() {
         let mut file = archive.by_index(i)?;
         let file_path = file.mangled_name();

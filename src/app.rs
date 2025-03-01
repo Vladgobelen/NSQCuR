@@ -38,7 +38,8 @@ impl App {
         });
 
         let client = Client::new();
-        let addons = config::load_addons_config_blocking(&client).expect("Failed to load addons config");
+        let addons =
+            config::load_addons_config_blocking(&client).expect("Failed to load addons config");
 
         let addons_with_state = addons
             .into_iter()
