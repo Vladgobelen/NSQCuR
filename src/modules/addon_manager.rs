@@ -92,9 +92,9 @@ fn move_contents(source: &Path, dest: &Path) -> Result<()> {
         let target = dest.join(entry.file_name());
 
         if entry_path.is_dir() {
-            fs_extra::dir::copy(entry_path, &target, &dir_options)?;
+            fs_extra::dir::copy(&entry_path, &target, &dir_options)?; // Исправлено: добавлен &
         } else {
-            fs_extra::file::copy(entry_path, &target, &file_options)?;
+            fs_extra::file::copy(&entry_path, &target, &file_options)?; // Исправлено: добавлен &
         }
         println!("[DEBUG] Перенос: {:?} -> {:?}", entry_path, target);
     }
