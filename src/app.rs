@@ -28,7 +28,6 @@ pub struct App {
 impl App {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         cc.egui_ctx.set_visuals(egui::Visuals::dark());
-
         config::check_game_directory().unwrap_or_else(|e| panic!("{}", e));
 
         let client = Client::new();
@@ -81,14 +80,7 @@ impl App {
             };
 
             let mut state = state.lock().unwrap();
-            match result {
-                Ok(success) => {
-                    state.target_state = Some(success == desired_state);
-                }
-                Err(_) => {
-                    state.target_state = Some(current_actual_state);
-                }
-            }
+            state.target_state = Some(result.unwrap_or(false));
             state.installing = false;
         });
     }
@@ -105,16 +97,11 @@ impl eframe::App for App {
             ScrollArea::vertical().show(ui, |ui| {
                 for (i, (addon, state)) in self.addons.iter().enumerate() {
                     let mut state_lock = state.lock().unwrap();
-                    let current_actual_state = addon_manager::check_addon_installed(addon);
-
-                    if state_lock.target_state.is_none() {
-                        state_lock.target_state = Some(current_actual_state);
-                    }
+                    let current_state = state_lock.target_state.unwrap_or(false);
 
                     ui.horizontal(|ui| {
-                        let mut desired_state = state_lock.target_state.unwrap_or(false);
                         let response = ui.add_enabled_ui(!state_lock.installing, |ui| {
-                            ui.checkbox(&mut desired_state, "")
+                            ui.checkbox(&mut current_state.clone(), "")
                         });
 
                         if response.inner.changed() {
@@ -126,8 +113,6 @@ impl eframe::App for App {
                             ui.label(&addon.description);
                             if state_lock.installing {
                                 ui.add(ProgressBar::new(state_lock.progress).show_percentage());
-                            } else {
-                                state_lock.target_state = Some(current_actual_state);
                             }
                         });
                     });

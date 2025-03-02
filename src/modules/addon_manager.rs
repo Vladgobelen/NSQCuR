@@ -1,17 +1,18 @@
 use crate::app::{Addon, AddonState};
 use anyhow::Result;
-use fs_extra::dir::{copy, CopyOptions};
+use fs_extra::{dir::CopyOptions, move_items};
 use reqwest::blocking::Client;
-use std::fs::{self, File};
-use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::{
+    fs,
+    io::{Read, Write},
+    path::{Path, PathBuf},
+    sync::{Arc, Mutex},
+};
 use tempfile;
 use zip::ZipArchive;
 
 pub fn check_addon_installed(addon: &Addon) -> bool {
-    let install_path = get_install_path(addon);
-    install_path.exists()
+    get_install_path(addon).exists()
 }
 
 pub fn install_addon(
@@ -34,27 +35,37 @@ fn handle_zip_install(
     install_path: PathBuf,
     state: Arc<Mutex<AddonState>>,
 ) -> Result<bool> {
+    // 1. Скачивание архива
     let temp_dir = tempfile::tempdir()?;
-    let download_path = temp_dir.path().join("download.zip");
-
-    // Скачивание архива
+    let download_path = temp_dir.path().join("archive.zip");
     download_file(client, &addon.link, &download_path, state.clone())?;
 
-    // Распаковка
-    let extract_temp_dir = tempfile::tempdir()?;
-    extract_zip(&download_path, extract_temp_dir.path())?;
+    // 2. Распаковка
+    let extract_dir = tempfile::tempdir()?;
+    extract_zip(&download_path, extract_dir.path())?;
 
-    // Копирование в целевую директорию
-    let copy_options = CopyOptions::new()
-        .overwrite(true)
-        .content_only(false)
-        .copy_inside(true);
+    // 3. Анализ содержимого
+    let entries: Vec<_> = fs::read_dir(extract_dir.path())?
+        .filter_map(|e| e.ok())
+        .collect();
 
-    if install_path.exists() {
-        fs::remove_dir_all(&install_path)?;
+    match entries.len() {
+        // 4. Один элемент - переименовываем
+        1 => {
+            let source = entries[0].path();
+            if source.is_dir() {
+                move_renamed(&source, &install_path)?;
+            } else {
+                fs::create_dir_all(&install_path.parent().unwrap())?;
+                fs::rename(&source, &install_path)?;
+            }
+        }
+        // 5. Несколько элементов - перемещаем всё
+        _ => {
+            fs::create_dir_all(&install_path)?;
+            move_all_contents(extract_dir.path(), &install_path)?;
+        }
     }
-
-    copy(extract_temp_dir.path(), &install_path, &copy_options)?;
 
     Ok(check_addon_installed(addon))
 }
@@ -65,27 +76,44 @@ fn handle_file_install(
     install_path: PathBuf,
     state: Arc<Mutex<AddonState>>,
 ) -> Result<bool> {
+    fs::create_dir_all(install_path.parent().unwrap())?;
     download_file(client, &addon.link, &install_path, state)?;
     Ok(check_addon_installed(addon))
 }
 
 pub fn uninstall_addon(addon: &Addon) -> Result<bool> {
-    let install_path = get_install_path(addon);
-
-    if install_path.exists() {
-        if install_path.is_dir() {
-            fs::remove_dir_all(&install_path)?;
+    let path = get_install_path(addon);
+    if path.exists() {
+        if path.is_dir() {
+            fs::remove_dir_all(path)?;
         } else {
-            fs::remove_file(&install_path)?;
+            fs::remove_file(path)?;
         }
     }
-
     Ok(!check_addon_installed(addon))
 }
 
 // Вспомогательные функции
 fn get_install_path(addon: &Addon) -> PathBuf {
     Path::new(&addon.target_path).join(&addon.name)
+}
+
+fn move_renamed(source: &Path, dest: &Path) -> Result<()> {
+    if dest.exists() {
+        fs::remove_dir_all(dest)?;
+    }
+    fs::rename(source, dest)?;
+    Ok(())
+}
+
+fn move_all_contents(source: &Path, dest: &Path) -> Result<()> {
+    let options = CopyOptions::new().overwrite(true);
+    let items: Vec<_> = fs::read_dir(source)?
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .collect();
+    move_items(&items, dest, &options)?;
+    Ok(())
 }
 
 fn download_file(
