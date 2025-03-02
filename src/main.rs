@@ -4,38 +4,16 @@ mod app;
 mod config;
 mod modules;
 
-use anyhow::Result;
 use app::App;
-use eframe::egui::{IconData, ViewportBuilder};
-use log::error;
-use std::sync::Arc;
+use eframe::egui;
+use egui::IconData;
+use egui::ViewportBuilder;
 
 fn main() -> Result<(), eframe::Error> {
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("debug"))
-        .format_timestamp(None)
-        .init();
-
-    #[cfg(target_os = "windows")]
-    if cfg!(not(debug_assertions)) && std::env::var("RUST_LOG").is_ok() {
-        unsafe {
-            winapi::um::consoleapi::AllocConsole();
-        }
-    }
-
-    let icon_result = load_icon();
-    let mut viewport_builder = ViewportBuilder::default().with_inner_size([400.0, 600.0]);
-
-    match icon_result {
-        Ok(icon) => {
-            viewport_builder = viewport_builder.with_icon(Arc::new(icon));
-        }
-        Err(e) => {
-            error!("Failed to load icon: {}", e);
-        }
-    }
-
     let options = eframe::NativeOptions {
-        viewport: viewport_builder,
+        viewport: ViewportBuilder::default()
+            .with_inner_size([400.0, 600.0])
+            .with_icon(load_icon().expect("Не удалось загрузить иконку")),
         ..Default::default()
     };
 
@@ -46,15 +24,14 @@ fn main() -> Result<(), eframe::Error> {
     )
 }
 
-fn load_icon() -> Result<IconData> {
+fn load_icon() -> Option<IconData> {
     let icon_bytes = include_bytes!("../resources/emblem.ico");
-    let image = image::load_from_memory(icon_bytes)
-        .map_err(|e| anyhow::anyhow!("Image load error: {}", e))?;
+    let image = image::load_from_memory(icon_bytes).ok()?.to_rgba8();
 
     let (width, height) = (image.width(), image.height());
-    let rgba = image.to_rgba8().into_raw();
+    let rgba = image.into_raw();
 
-    Ok(IconData {
+    Some(IconData {
         rgba,
         width,
         height,
