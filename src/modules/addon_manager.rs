@@ -4,7 +4,7 @@ use fs_extra::dir::{copy, CopyOptions};
 use reqwest::blocking::Client;
 use std::fs::{self, File};
 use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 use tempfile;
 use zip::ZipArchive;

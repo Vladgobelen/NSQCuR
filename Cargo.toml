@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-image = "0.24.7"
+image = "0.25"
 anyhow = "1.0"
 egui = "0.31.0"
 eframe = { version = "0.31.0", features = ["persistence"] }
