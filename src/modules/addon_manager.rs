@@ -1,5 +1,5 @@
 use crate::app::{Addon, AddonState};
-use anyhow::{Context, Result};
+use anyhow::Result;
 use fs_extra::dir::CopyOptions as DirCopyOptions;
 use log::{debug, error, info};
 use reqwest::blocking::Client;
@@ -7,7 +7,7 @@ use std::{
     fs,
     fs::File,
     io::{Read, Write},
-    path::{Path, PathBuf},
+    path::Path,
     sync::{Arc, Mutex},
 };
 use tempfile::tempdir;
