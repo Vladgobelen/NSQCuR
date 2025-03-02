@@ -72,7 +72,8 @@ fn handle_zip_install(
         } else {
             file_path
                 .strip_prefix(source_path)
-                .unwrap_or(file_path.as_path())
+                .map(|p| p.to_path_buf())
+                .unwrap_or(file_path)
         };
 
         let outpath = target_path.join(relative_path);
