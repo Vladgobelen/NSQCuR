@@ -3,7 +3,7 @@ mod config;
 mod modules;
 
 use crate::app::App;
-use egui::IconData;
+use egui::IconData; // Исправлен импорт
 
 fn main() -> Result<(), eframe::Error> {
     let options = eframe::NativeOptions {
