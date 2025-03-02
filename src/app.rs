@@ -65,6 +65,11 @@ impl App {
         let current_actual_state = addon_manager::check_addon_installed(&addon);
         let desired_state = !current_actual_state;
 
+        println!(
+            "[ACTION] Переключение аддона '{}': {} -> {}",
+            addon.name, current_actual_state, desired_state
+        );
+
         state_lock.target_state = Some(desired_state);
         state_lock.installing = true;
         state_lock.progress = 0.0;
@@ -79,7 +84,7 @@ impl App {
             };
 
             let mut state = state.lock().unwrap();
-            state.target_state = Some(result.is_ok());
+            state.target_state = Some(result.unwrap_or(false));
             state.installing = false;
         });
     }

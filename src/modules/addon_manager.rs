@@ -1,5 +1,6 @@
 use crate::app::{Addon, AddonState};
-use anyhow::Result;
+use anyhow::{Context, Result};
+use fs_extra::dir::CopyOptions;
 use reqwest::blocking::Client;
 use std::{
     fs,
@@ -8,8 +9,9 @@ use std::{
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
-use tempfile;
 use zip::ZipArchive;
+
+const TEMP_DIR: &str = "tmp_debug";
 
 pub fn check_addon_installed(addon: &Addon) -> bool {
     get_install_path(addon).exists()
@@ -24,6 +26,8 @@ pub fn install_addon(
     addon: &Addon,
     state: Arc<Mutex<AddonState>>,
 ) -> Result<bool> {
+    fs::create_dir_all(TEMP_DIR)?;
+
     if addon.link.ends_with(".zip") {
         handle_zip_install(client, addon, state)
     } else {
@@ -36,36 +40,64 @@ fn handle_zip_install(
     addon: &Addon,
     state: Arc<Mutex<AddonState>>,
 ) -> Result<bool> {
-    let install_path = get_install_path(addon);
-    let temp_dir = tempfile::tempdir()?;
-    let download_path = temp_dir.path().join("archive.zip");
-
+    // 1. Скачивание
+    let download_path = Path::new(TEMP_DIR).join(format!("{}.zip", addon.name));
+    println!("[DEBUG] Скачиваем архив: {:?}", download_path);
     download_file(client, &addon.link, &download_path, state.clone())?;
-    extract_zip(&download_path, &install_path)?;
+
+    // 2. Распаковка
+    let extract_dir = Path::new(TEMP_DIR).join(&addon.name);
+    println!("[DEBUG] Распаковываем в: {:?}", extract_dir);
+    extract_zip(&download_path, &extract_dir)?;
+
+    // 3. Логирование структуры
+    println!("[DEBUG] Содержимое архива:");
+    log_directory_structure(&extract_dir)?;
+
+    // 4. Перенос файлов
+    let install_path = get_install_path(addon);
+    move_contents(&extract_dir, &install_path)
+        .with_context(|| format!("Ошибка переноса в {:?}", install_path))?;
 
     Ok(check_addon_installed(addon))
 }
 
-fn handle_file_install(
-    client: &Client,
-    addon: &Addon,
-    state: Arc<Mutex<AddonState>>,
-) -> Result<bool> {
-    let install_path = get_install_path(addon);
-    download_file(client, &addon.link, &install_path, state)?;
-    Ok(install_path.exists())
+fn log_directory_structure(path: &Path) -> Result<()> {
+    fn log_recursive(path: &Path, depth: usize) -> Result<()> {
+        for entry in fs::read_dir(path)? {
+            let entry = entry?;
+            let entry_path = entry.path();
+            println!(
+                "{}- {}",
+                " ".repeat(depth * 2),
+                entry_path.file_name().unwrap().to_string_lossy()
+            );
+            if entry_path.is_dir() {
+                log_recursive(&entry_path, depth + 1)?;
+            }
+        }
+        Ok(())
+    }
+    log_recursive(path, 0)
 }
 
-pub fn uninstall_addon(addon: &Addon) -> Result<bool> {
-    let path = get_install_path(addon);
-    if path.exists() {
-        if path.is_dir() {
-            fs::remove_dir_all(path)?;
+fn move_contents(source: &Path, dest: &Path) -> Result<()> {
+    fs::create_dir_all(dest)?;
+    let options = CopyOptions::new().overwrite(true);
+
+    for entry in fs::read_dir(source)? {
+        let entry = entry?;
+        let entry_path = entry.path();
+        let target = dest.join(entry.file_name());
+
+        if entry_path.is_dir() {
+            fs_extra::dir::copy(entry_path, &target, &options)?;
         } else {
-            fs::remove_file(path)?;
+            fs_extra::file::copy(entry_path, &target, &options)?;
         }
+        println!("[DEBUG] Перенос: {:?} -> {:?}", entry_path, target);
     }
-    Ok(!check_addon_installed(addon))
+    Ok(())
 }
 
 fn download_file(
@@ -89,7 +121,6 @@ fn download_file(
         downloaded += bytes_read as u64;
         state.lock().unwrap().progress = downloaded as f32 / total_size as f32;
     }
-
     Ok(())
 }
 
@@ -98,4 +129,27 @@ fn extract_zip(zip_path: &Path, target_dir: &Path) -> Result<()> {
     let mut archive = ZipArchive::new(file)?;
     archive.extract(target_dir)?;
     Ok(())
+}
+
+fn handle_file_install(
+    client: &Client,
+    addon: &Addon,
+    state: Arc<Mutex<AddonState>>,
+) -> Result<bool> {
+    let install_path = get_install_path(addon);
+    fs::create_dir_all(install_path.parent().unwrap())?;
+    download_file(client, &addon.link, &install_path, state)?;
+    Ok(install_path.exists())
+}
+
+pub fn uninstall_addon(addon: &Addon) -> Result<bool> {
+    let path = get_install_path(addon);
+    if path.exists() {
+        if path.is_dir() {
+            fs::remove_dir_all(&path)?;
+        } else {
+            fs::remove_file(&path)?;
+        }
+    }
+    Ok(!check_addon_installed(addon))
 }
