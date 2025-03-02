@@ -1,7 +1,9 @@
 use eframe::egui;
 use reqwest::blocking::get;
 use std::fs::{self, create_dir_all, File};
+use std::io::Write;
 use std::io::{Cursor, Write};
+use std::path::PathBuf;
 use std::path::{Path, PathBuf};
 use zip::ZipArchive;
 
@@ -194,7 +196,6 @@ impl eframe::App for MyApp {
 }
 
 fn main() {
-    // Настройка логов
     env_logger::Builder::new()
         .filter_level(log::LevelFilter::Info)
         .format(|buf, record| {
@@ -208,11 +209,10 @@ fn main() {
         })
         .init();
 
-    // Запуск приложения
     let options = eframe::NativeOptions::default();
     eframe::run_native(
         "Nightwatch Updater",
         options,
-        Box::new(|_cc| Box::new(MyApp::new())),
+        Box::new(|_cc| Ok(Box::new(MyApp::new()))), // Добавьте Ok()
     );
 }
