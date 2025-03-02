@@ -14,15 +14,8 @@ use tempfile::tempdir;
 use zip::ZipArchive;
 
 pub fn check_addon_installed(addon: &Addon) -> bool {
-    let install_base = Path::new(&addon.target_path);
-    install_base.join(&addon.name).exists()
-        || fs::read_dir(install_base)
-            .map(|entries| {
-                entries
-                    .filter_map(|e| e.ok())
-                    .any(|e| e.file_name().to_string_lossy().contains(&addon.name))
-            })
-            .unwrap_or(false)
+    let install_path = Path::new(&addon.target_path).join(&addon.name);
+    install_path.exists() && install_path.is_dir()
 }
 
 pub fn install_addon(
@@ -38,39 +31,37 @@ fn handle_zip_install(
     addon: &Addon,
     state: Arc<Mutex<AddonState>>,
 ) -> Result<bool> {
-    info!("Installing {} from ZIP", addon.name);
+    info!("Installing {}...", addon.name);
 
     let temp_dir = tempdir()?;
     let download_path = temp_dir.path().join(format!("{}.zip", addon.name));
 
+    // Download
     download_file(client, &addon.link, &download_path, state.clone())?;
 
+    // Extract
     let extract_dir = temp_dir.path().join("extracted");
     fs::create_dir_all(&extract_dir)?;
     extract_zip(&download_path, &extract_dir)?;
 
+    // Prepare install path
     let install_base = Path::new(&addon.target_path)
         .canonicalize()
         .unwrap_or_else(|_| Path::new(&addon.target_path).to_path_buf());
 
-    debug!("Install base: {}", install_base.display());
-
     if !install_base.exists() {
-        fs::create_dir_all(&install_base).context("Failed to create target directory")?;
+        fs::create_dir_all(&install_base)?;
     }
 
+    // Find root folder
     let dir_entries: Vec<_> = fs::read_dir(&extract_dir)?
         .filter_map(|e| e.ok())
-        .filter(|e| e.metadata().map(|m| m.is_dir()).unwrap_or(false))
+        .filter(|e| e.path().is_dir())
         .collect();
 
     match dir_entries.len() {
-        0 => copy_all_contents(&extract_dir, &install_base)?,
-        1 => {
-            let source_dir = dir_entries[0].path();
-            let target_dir = install_base.join(&addon.name);
-            copy_all_contents(&source_dir, &target_dir)?;
-        }
+        0 => copy_all_contents(&extract_dir, &install_base.join(&addon.name))?,
+        1 => copy_all_contents(&dir_entries[0].path(), &install_base.join(&addon.name))?,
         _ => {
             for entry in dir_entries {
                 let source = entry.path();
@@ -87,8 +78,10 @@ fn copy_all_contents(source: &Path, dest: &Path) -> Result<()> {
     let source = source.canonicalize()?;
     let dest = dest.canonicalize()?;
 
+    debug!("Copying from {} to {}", source.display(), dest.display());
+
     if dest.exists() {
-        fs::remove_dir_all(&dest).context(format!("Failed to clean: {}", dest.display()))?;
+        fs::remove_dir_all(&dest)?;
     }
 
     fs::create_dir_all(&dest)?;
@@ -98,13 +91,7 @@ fn copy_all_contents(source: &Path, dest: &Path) -> Result<()> {
         .content_only(true)
         .copy_inside(true);
 
-    fs_extra::dir::copy(&source, &dest, &options)
-        .map(|_| ())
-        .context(format!(
-            "Copy failed: {} -> {}",
-            source.display(),
-            dest.display()
-        ))?;
+    fs_extra::dir::copy(&source, &dest, &options)?;
 
     Ok(())
 }
@@ -130,6 +117,7 @@ fn download_file(
         downloaded += bytes_read as u64;
         state.lock().unwrap().progress = downloaded as f32 / total_size as f32;
     }
+
     Ok(())
 }
 
@@ -141,25 +129,10 @@ fn extract_zip(zip_path: &Path, target_dir: &Path) -> Result<()> {
 }
 
 pub fn uninstall_addon(addon: &Addon) -> Result<bool> {
-    let base_path = Path::new(&addon.target_path);
-    let mut success = true;
+    let install_path = Path::new(&addon.target_path).join(&addon.name);
 
-    let main_path = base_path.join(&addon.name);
-    if main_path.exists() {
-        fs::remove_dir_all(&main_path)
-            .map_err(|e| error!("Delete error: {} - {}", main_path.display(), e))
-            .ok();
-    }
-
-    if let Ok(entries) = fs::read_dir(base_path) {
-        for entry in entries.filter_map(|e| e.ok()) {
-            let path = entry.path();
-            if path.is_dir() && entry.file_name().to_string_lossy().contains(&addon.name) {
-                fs::remove_dir_all(&path)
-                    .map_err(|e| error!("Delete error: {} - {}", path.display(), e))
-                    .ok();
-            }
-        }
+    if install_path.exists() {
+        fs::remove_dir_all(&install_path)?;
     }
 
     Ok(!check_addon_installed(addon))

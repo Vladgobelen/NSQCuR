@@ -1,62 +1,37 @@
 use crate::app::Addon;
-use anyhow::Result;
-use indexmap::IndexMap;
+use anyhow::{Context, Result};
 use reqwest::blocking::Client;
 use serde::Deserialize;
+use std::path::PathBuf;
+
+const CONFIG_URL: &str =
+    "https://raw.githubusercontent.com/Vladgobelen/NSQCu/refs/heads/main/addons.json";
 
 #[derive(Deserialize)]
-struct AddonConfig {
-    link: String,
-    description: String,
+struct RawAddon {
+    name: String,
+    download_url: String,
     target_path: String,
 }
 
-pub fn load_addons_config_blocking(client: &Client) -> Result<IndexMap<String, Addon>> {
+pub fn load_online_config(client: &Client) -> Result<Vec<Addon>> {
     let response = client
-        .get("https://raw.githubusercontent.com/Vladgobelen/NSQCu/refs/heads/main/addons.json")
-        .send()?;
+        .get(CONFIG_URL)
+        .send()
+        .context("Failed to download config")?;
 
-    if !response.status().is_success() {
-        return Err(anyhow::anyhow!(
-            "HTTP Error: {} - {}",
-            response.status(),
-            response.text()?
-        ));
-    }
+    let raw_addons: Vec<RawAddon> = response.json().context("Failed to parse config")?;
 
-    let text = response.text()?;
-
-    #[derive(Deserialize)]
-    struct Config {
-        addons: IndexMap<String, AddonConfig>,
-    }
-
-    let config: Config = serde_json::from_str(&text)?;
-
-    Ok(config
-        .addons
+    Ok(raw_addons
         .into_iter()
-        .map(|(name, cfg)| {
-            (
-                name.clone(),
-                Addon {
-                    name,
-                    link: cfg.link,
-                    description: cfg.description,
-                    target_path: cfg.target_path,
-                },
-            )
+        .map(|raw| Addon {
+            name: raw.name,
+            link: raw.download_url,
+            target_path: PathBuf::from(raw.target_path)
+                .to_string_lossy()
+                .replace('/', std::path::MAIN_SEPARATOR.to_string().as_str())
+                .into(),
+            installed: false,
         })
         .collect())
-}
-
-pub fn check_game_directory() -> Result<()> {
-    let required_dirs = ["Interface/AddOns", "Data", "Fonts"];
-    for dir in required_dirs {
-        let path = std::path::Path::new(dir);
-        if !path.exists() {
-            std::fs::create_dir_all(path)?;
-        }
-    }
-    Ok(())
 }
