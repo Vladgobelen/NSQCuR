@@ -44,41 +44,42 @@ fn handle_zip_install(
     let target_path = Path::new(&addon.target_path);
     let source_path = Path::new(&addon.source_path);
 
-    // Загрузка архива
+    // Загрузка всего архива в память
     let mut response = client.get(&addon.link).send()?;
     let mut buffer = Vec::new();
     response.read_to_end(&mut buffer)?;
     let total_size = buffer.len() as u64;
     let mut reader = Cursor::new(buffer);
 
-    // Подготовка директории
+    // Работа с архивом
+    let mut archive = ZipArchive::new(&mut reader)?;
+    let mut total_processed: u64 = 0;
+
+    // Очистка целевой директории
     if target_path.exists() {
         fs::remove_dir_all(target_path)?;
     }
     fs::create_dir_all(target_path)?;
 
-    // Распаковка
-    let mut archive = ZipArchive::new(&mut reader)?;
-    let mut last_pos = 0;
-
     for i in 0..archive.len() {
         let mut file = archive.by_index(i)?;
+        let file_size = file.size();
         let file_path = file.mangled_name();
 
-        // Обработка путей
+        // Формирование относительного пути
         let relative_path = if source_path.as_os_str().is_empty() {
-            file_path
+            file_path.clone()
         } else {
             file_path
                 .strip_prefix(source_path)
-                .unwrap_or(&file_path)
+                .unwrap_or_else(|_| file_path.as_path())
                 .to_path_buf()
         };
 
         let outpath = target_path.join(relative_path);
 
-        // Создание файлов/папок
-        if file.is_dir() {
+        // Создание файлов/директорий
+        if file.name().ends_with('/') {
             fs::create_dir_all(&outpath)?;
         } else {
             if let Some(parent) = outpath.parent() {
@@ -88,12 +89,9 @@ fn handle_zip_install(
             io::copy(&mut file, &mut outfile)?;
         }
 
-        // Прогресс по позиции курсора
-        let current_pos = reader.position();
-        if current_pos > last_pos {
-            state.lock().unwrap().progress = current_pos as f32 / total_size as f32;
-            last_pos = current_pos;
-        }
+        // Обновление прогресса
+        total_processed += file_size;
+        state.lock().unwrap().progress = total_processed as f32 / total_size as f32;
     }
 
     Ok(check_addon_installed(addon))
