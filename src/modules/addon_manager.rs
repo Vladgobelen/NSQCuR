@@ -18,7 +18,13 @@ pub fn check_addon_installed(addon: &Addon) -> bool {
 }
 
 fn get_install_path(addon: &Addon) -> PathBuf {
-    Path::new(&addon.target_path).join(&addon.name)
+    // Обработка пустого target_path
+    let base_path = if addon.target_path.is_empty() {
+        PathBuf::from(".") // Корень игры (замените на реальный путь)
+    } else {
+        PathBuf::from(&addon.target_path)
+    };
+    base_path.join(&addon.name)
 }
 
 pub fn install_addon(
@@ -40,23 +46,23 @@ fn handle_zip_install(
     addon: &Addon,
     state: Arc<Mutex<AddonState>>,
 ) -> Result<bool> {
-    // 1. Скачивание
+    // Скачивание
     let download_path = Path::new(TEMP_DIR).join(format!("{}.zip", addon.name));
     println!("[DEBUG] Скачиваем архив: {:?}", download_path);
     download_file(client, &addon.link, &download_path, state.clone())?;
 
-    // 2. Распаковка
+    // Распаковка
     let extract_dir = Path::new(TEMP_DIR).join(&addon.name);
     println!("[DEBUG] Распаковываем в: {:?}", extract_dir);
     extract_zip(&download_path, &extract_dir)?;
 
-    // 3. Определяем корневую папку архива
+    // Определяем корневую папку
     let archive_root = find_archive_root(&extract_dir)?;
     println!("[DEBUG] Корень архива: {:?}", archive_root);
 
-    // 4. Перенос
+    // Перенос содержимого
     let install_path = get_install_path(addon);
-    move_archive_root(&archive_root, &install_path)?;
+    move_contents(&archive_root, &install_path)?;
 
     Ok(check_addon_installed(addon))
 }
@@ -64,43 +70,24 @@ fn handle_zip_install(
 fn find_archive_root(extract_dir: &Path) -> Result<PathBuf> {
     let entries: Vec<_> = fs::read_dir(extract_dir)?.filter_map(|e| e.ok()).collect();
 
-    // Если есть ровно одна директория - используем её как корень
-    if entries.len() == 1 && entries[0].path().is_dir() {
+    // Если архив содержит одну папку - используем её
+    if entries.len() == 1 && entries[0].file_type()?.is_dir() {
         Ok(entries[0].path())
     } else {
         Ok(extract_dir.to_path_buf())
     }
 }
 
-fn move_archive_root(source: &Path, dest: &Path) -> Result<()> {
-    let options = DirCopyOptions::new()
-        .overwrite(true)
-        .copy_inside(true)
-        .content_only(false);
+fn move_contents(source: &Path, dest: &Path) -> Result<()> {
+    let options = DirCopyOptions::new().overwrite(true).content_only(true); // Перенос содержимого, а не папки
 
-    // Удаляем старую версию, если существует
     if dest.exists() {
-        fs::remove_dir_all(dest)
-            .with_context(|| format!("Не удалось удалить старую версию: {:?}", dest))?;
+        fs::remove_dir_all(dest).context("Ошибка удаления старой версии")?;
     }
+    fs::create_dir_all(dest)?;
 
-    // Создаем родительскую директорию для dest
-    if let Some(parent) = dest.parent() {
-        fs::create_dir_all(parent)?;
-    }
-
-    // Копируем всю папку (а не только её содержимое)
-    fs_extra::dir::copy(
-        source,
-        dest.parent().unwrap_or_else(|| Path::new("")),
-        &options,
-    )?;
-
-    println!(
-        "[DEBUG] Перенос завершен: {:?} -> {:}",
-        source,
-        dest.display()
-    );
+    fs_extra::dir::copy(source, dest, &options)?;
+    println!("[DEBUG] Перенесено: {:?} → {:?}", source, dest);
     Ok(())
 }
 

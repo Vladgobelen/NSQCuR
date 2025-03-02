@@ -13,7 +13,7 @@ struct AddonConfig {
 
 pub fn load_addons_config_blocking(client: &Client) -> Result<IndexMap<String, Addon>> {
     let response = client
-        .get("https://raw.githubusercontent.com/Vladgobelen/NSQCu/refs/heads/main/addons.json")
+        .get("https://raw.githubusercontent.com/username/repo/main/addons.json")
         .send()?;
     let text = response.text()?;
 

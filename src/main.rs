@@ -6,9 +6,6 @@ use app::App;
 use egui::IconData;
 
 fn main() -> Result<(), eframe::Error> {
-    // Удаление предыдущих временных файлов
-    let _ = std::fs::remove_dir_all("tmp_debug");
-
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([400.0, 600.0])
@@ -17,7 +14,7 @@ fn main() -> Result<(), eframe::Error> {
     };
 
     eframe::run_native(
-        "Апдейтер Ночной Стражи",
+        "Менеджер аддонов",
         options,
         Box::new(|cc| Ok(Box::new(App::new(cc)))),
     )

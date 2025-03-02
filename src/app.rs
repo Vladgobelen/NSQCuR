@@ -65,11 +65,6 @@ impl App {
         let current_actual_state = addon_manager::check_addon_installed(&addon);
         let desired_state = !current_actual_state;
 
-        println!(
-            "[ACTION] Переключение аддона '{}': {} -> {}",
-            addon.name, current_actual_state, desired_state
-        );
-
         state_lock.target_state = Some(desired_state);
         state_lock.installing = true;
         state_lock.progress = 0.0;
@@ -84,6 +79,7 @@ impl App {
             };
 
             let mut state = state.lock().unwrap();
+            // Обновление состояния после операции
             state.target_state = Some(result.unwrap_or(false));
             state.installing = false;
         });
@@ -93,7 +89,7 @@ impl App {
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         CentralPanel::default().show(ctx, |ui| {
-            ui.heading("Менеджер аддонов Ночной Стражи");
+            ui.heading("Менеджер аддонов");
             ui.separator();
 
             let mut indices_to_toggle = Vec::new();
