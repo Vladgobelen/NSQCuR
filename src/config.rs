@@ -3,17 +3,12 @@ use anyhow::Result;
 use indexmap::IndexMap;
 use reqwest::blocking::Client;
 use serde::Deserialize;
-use std::path::Path;
 
 #[derive(Deserialize)]
 struct AddonConfig {
     link: String,
     description: String,
-    #[serde(rename = "type")]
-    addon_type: u8,
-    source_path: String,
     target_path: String,
-    delete_path: String,
 }
 
 pub fn load_addons_config_blocking(client: &Client) -> Result<IndexMap<String, Addon>> {
@@ -39,10 +34,7 @@ pub fn load_addons_config_blocking(client: &Client) -> Result<IndexMap<String, A
                     name,
                     link: cfg.link,
                     description: cfg.description,
-                    addon_type: cfg.addon_type,
-                    source_path: cfg.source_path,
                     target_path: cfg.target_path,
-                    delete_path: cfg.delete_path,
                 },
             )
         })
@@ -52,7 +44,7 @@ pub fn load_addons_config_blocking(client: &Client) -> Result<IndexMap<String, A
 pub fn check_game_directory() -> Result<()> {
     let required_dirs = ["Interface/AddOns", "Data", "Fonts"];
     for dir in required_dirs {
-        let path = Path::new(dir);
+        let path = std::path::Path::new(dir);
         if !path.exists() {
             std::fs::create_dir_all(path)?;
         }

@@ -10,11 +10,7 @@ pub struct Addon {
     pub name: String,
     pub link: String,
     pub description: String,
-    #[serde(rename = "type")]
-    pub addon_type: u8,
-    pub source_path: String,
     pub target_path: String,
-    pub delete_path: String,
 }
 
 #[derive(Default)]
@@ -33,9 +29,7 @@ impl App {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         cc.egui_ctx.set_visuals(egui::Visuals::dark());
 
-        config::check_game_directory().unwrap_or_else(|e| {
-            panic!("{}", e);
-        });
+        config::check_game_directory().unwrap_or_else(|e| panic!("{}", e));
 
         let client = Client::new();
         let addons =
