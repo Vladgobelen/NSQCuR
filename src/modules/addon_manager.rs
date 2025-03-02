@@ -118,5 +118,13 @@ pub fn uninstall_addon(addon: &Addon) -> Result<()> {
             fs::remove_file(&path)?;
         }
     }
-    Ok(!check_addon_installed(addon))
+
+    // Проверяем, что аддон действительно удален
+    if check_addon_installed(addon) {
+        println!("[DEBUG] Аддон {} не был полностью удален", addon.name);
+    } else {
+        println!("[DEBUG] Аддон {} успешно удален", addon.name);
+    }
+
+    Ok(())
 }
