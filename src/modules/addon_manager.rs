@@ -15,15 +15,19 @@ use zip::ZipArchive;
 
 pub fn check_addon_installed(addon: &Addon) -> bool {
     let install_base = Path::new(&addon.target_path);
-    
+
     let main_path = install_base.join(&addon.name);
     if main_path.exists() {
         return true;
     }
 
-    install_base.read_dir()
-        .map(|entries| entries.filter_map(|e| e.ok())
-            .any(|e| e.file_name().to_string_lossy().contains(&addon.name)))
+    install_base
+        .read_dir()
+        .map(|entries| {
+            entries
+                .filter_map(|e| e.ok())
+                .any(|e| e.file_name().to_string_lossy().contains(&addon.name))
+        })
         .unwrap_or(false)
 }
 
@@ -33,7 +37,7 @@ fn handle_zip_install(
     state: Arc<Mutex<AddonState>>,
 ) -> Result<bool> {
     info!("Installing {} from ZIP", addon.name);
-    
+
     let temp_dir = tempdir()?;
     let download_path = temp_dir.path().join(format!("{}.zip", addon.name));
     download_file(client, &addon.link, &download_path, state.clone())?;
@@ -47,10 +51,9 @@ fn handle_zip_install(
         .unwrap_or_else(|_| Path::new(&addon.target_path).to_path_buf());
 
     debug!("Install base directory: {}", install_base.display());
-    
+
     if !install_base.exists() {
-        fs::create_dir_all(&install_base)
-            .context("Failed to create target directory")?;
+        fs::create_dir_all(&install_base).context("Failed to create target directory")?;
     }
 
     let dir_entries: Vec<_> = fs::read_dir(&extract_dir)?
@@ -62,16 +65,17 @@ fn handle_zip_install(
         0 => {
             info!("Copying root contents to target");
             copy_all_contents(&extract_dir, &install_base)?;
-        },
+        }
         1 => {
             let source_dir = dir_entries[0].path();
             let target_dir = install_base.join(&addon.name);
-            info!("Copying single folder: {} -> {}", 
-                source_dir.display(), 
+            info!(
+                "Copying single folder: {} -> {}",
+                source_dir.display(),
                 target_dir.display()
             );
             copy_all_contents(&source_dir, &target_dir)?;
-        },
+        }
         _ => {
             info!("Copying multiple folders directly to target");
             for entry in dir_entries {
@@ -93,8 +97,7 @@ fn copy_all_contents(source: &Path, dest: &Path) -> Result<()> {
     debug!("Copying from {} to {}", source.display(), dest.display());
 
     if dest.exists() {
-        fs::remove_dir_all(&dest)
-            .context(format!("Failed to clean target: {}", dest.display()))?;
+        fs::remove_dir_all(&dest).context(format!("Failed to clean target: {}", dest.display()))?;
     }
 
     fs::create_dir_all(&dest)?;

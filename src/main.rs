@@ -13,7 +13,7 @@ fn main() -> Result<(), eframe::Error> {
     env_logger::init();
 
     let icon = load_icon().expect("Failed to load icon");
-    
+
     let options = eframe::NativeOptions {
         viewport: ViewportBuilder::default()
             .with_inner_size([800.0, 600.0])
@@ -31,9 +31,7 @@ fn main() -> Result<(), eframe::Error> {
 fn load_icon() -> Option<IconData> {
     let (icon_rgba, icon_width, icon_height) = {
         let icon = include_bytes!("../resources/emblem.ico");
-        let image = image::load_from_memory(icon)
-            .ok()?
-            .into_rgba8();
+        let image = image::load_from_memory(icon).ok()?.into_rgba8();
         let (width, height) = image.dimensions();
         let rgba = image.into_raw();
         (rgba, width, height)
