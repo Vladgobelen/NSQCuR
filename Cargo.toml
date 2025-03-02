@@ -19,6 +19,8 @@ zip = "2.2.3"
 tempfile = "3.5"
 indexmap = { version = "2.7.1", features = ["serde"] }
 fs_extra = "1.3.0"
+log = "0.4"
+env_logger = "0.11"
 
 # Оптимизации для уменьшения размера
 [profile.release]
