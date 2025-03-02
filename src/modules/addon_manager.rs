@@ -7,7 +7,7 @@ use std::{
     fs,
     fs::File,
     io::{Read, Write},
-    path::{Path, PathBuf},
+    path::Path,
     sync::{Arc, Mutex},
 };
 use tempfile::tempdir;
@@ -15,20 +15,22 @@ use zip::ZipArchive;
 
 pub fn check_addon_installed(addon: &Addon) -> bool {
     let install_base = Path::new(&addon.target_path);
+    install_base.join(&addon.name).exists()
+        || fs::read_dir(install_base)
+            .map(|entries| {
+                entries
+                    .filter_map(|e| e.ok())
+                    .any(|e| e.file_name().to_string_lossy().contains(&addon.name))
+            })
+            .unwrap_or(false)
+}
 
-    let main_path = install_base.join(&addon.name);
-    if main_path.exists() {
-        return true;
-    }
-
-    install_base
-        .read_dir()
-        .map(|entries| {
-            entries
-                .filter_map(|e| e.ok())
-                .any(|e| e.file_name().to_string_lossy().contains(&addon.name))
-        })
-        .unwrap_or(false)
+pub fn install_addon(
+    client: &Client,
+    addon: &Addon,
+    state: Arc<Mutex<AddonState>>,
+) -> Result<bool> {
+    handle_zip_install(client, addon, state)
 }
 
 fn handle_zip_install(
@@ -40,6 +42,7 @@ fn handle_zip_install(
 
     let temp_dir = tempdir()?;
     let download_path = temp_dir.path().join(format!("{}.zip", addon.name));
+
     download_file(client, &addon.link, &download_path, state.clone())?;
 
     let extract_dir = temp_dir.path().join("extracted");
@@ -50,7 +53,7 @@ fn handle_zip_install(
         .canonicalize()
         .unwrap_or_else(|_| Path::new(&addon.target_path).to_path_buf());
 
-    debug!("Install base directory: {}", install_base.display());
+    debug!("Install base: {}", install_base.display());
 
     if !install_base.exists() {
         fs::create_dir_all(&install_base).context("Failed to create target directory")?;
@@ -62,26 +65,16 @@ fn handle_zip_install(
         .collect();
 
     match dir_entries.len() {
-        0 => {
-            info!("Copying root contents to target");
-            copy_all_contents(&extract_dir, &install_base)?;
-        }
+        0 => copy_all_contents(&extract_dir, &install_base)?,
         1 => {
             let source_dir = dir_entries[0].path();
             let target_dir = install_base.join(&addon.name);
-            info!(
-                "Copying single folder: {} -> {}",
-                source_dir.display(),
-                target_dir.display()
-            );
             copy_all_contents(&source_dir, &target_dir)?;
         }
         _ => {
-            info!("Copying multiple folders directly to target");
             for entry in dir_entries {
                 let source = entry.path();
                 let target = install_base.join(entry.file_name());
-                debug!("Copying: {} -> {}", source.display(), target.display());
                 copy_all_contents(&source, &target)?;
             }
         }
@@ -94,10 +87,8 @@ fn copy_all_contents(source: &Path, dest: &Path) -> Result<()> {
     let source = source.canonicalize()?;
     let dest = dest.canonicalize()?;
 
-    debug!("Copying from {} to {}", source.display(), dest.display());
-
     if dest.exists() {
-        fs::remove_dir_all(&dest).context(format!("Failed to clean target: {}", dest.display()))?;
+        fs::remove_dir_all(&dest).context(format!("Failed to clean: {}", dest.display()))?;
     }
 
     fs::create_dir_all(&dest)?;
@@ -110,7 +101,7 @@ fn copy_all_contents(source: &Path, dest: &Path) -> Result<()> {
     fs_extra::dir::copy(&source, &dest, &options)
         .map(|_| ())
         .context(format!(
-            "Failed to copy contents from {} to {}",
+            "Copy failed: {} -> {}",
             source.display(),
             dest.display()
         ))?;
@@ -153,27 +144,23 @@ pub fn uninstall_addon(addon: &Addon) -> Result<bool> {
     let base_path = Path::new(&addon.target_path);
     let mut success = true;
 
-    // Удаление основной папки
     let main_path = base_path.join(&addon.name);
     if main_path.exists() {
-        if let Err(e) = fs::remove_dir_all(&main_path) {
-            error!("Failed to delete {}: {}", main_path.display(), e);
-            success = false;
-        }
+        fs::remove_dir_all(&main_path)
+            .map_err(|e| error!("Delete error: {} - {}", main_path.display(), e))
+            .ok();
     }
 
-    // Удаление всех связанных папок
     if let Ok(entries) = fs::read_dir(base_path) {
         for entry in entries.filter_map(|e| e.ok()) {
             let path = entry.path();
             if path.is_dir() && entry.file_name().to_string_lossy().contains(&addon.name) {
-                if let Err(e) = fs::remove_dir_all(&path) {
-                    error!("Failed to delete {}: {}", path.display(), e);
-                    success = false;
-                }
+                fs::remove_dir_all(&path)
+                    .map_err(|e| error!("Delete error: {} - {}", path.display(), e))
+                    .ok();
             }
         }
     }
 
-    Ok(success && !check_addon_installed(addon))
+    Ok(!check_addon_installed(addon))
 }

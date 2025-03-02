@@ -10,7 +10,11 @@ use egui::{IconData, ViewportBuilder};
 
 fn main() -> Result<(), eframe::Error> {
     #[cfg(debug_assertions)]
-    env_logger::init();
+    {
+        env_logger::Builder::new()
+            .filter_level(log::LevelFilter::Debug)
+            .init();
+    }
 
     let icon = load_icon().expect("Failed to load icon");
 
@@ -22,7 +26,7 @@ fn main() -> Result<(), eframe::Error> {
     };
 
     eframe::run_native(
-        "Установщик аддонов Ночной стражи",
+        "Nightwatch Updater",
         options,
         Box::new(|cc| Ok(Box::new(App::new(cc)))),
     )
