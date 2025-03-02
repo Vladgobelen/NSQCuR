@@ -183,10 +183,9 @@ fn extract_zip(zip_path: &Path, target_dir: &Path) -> Result<()> {
 }
 
 fn normalize_zip_path(path: &Path, base: &Path) -> PathBuf {
-    let mut components = path.components();
     let mut normalized = base.to_path_buf();
 
-    while let Some(component) = components.next() {
+    for component in path.components() {
         match component {
             Component::Prefix(_) => {}
             Component::RootDir => {}
