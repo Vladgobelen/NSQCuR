@@ -6,7 +6,7 @@ use std::{
     fs,
     fs::File,
     io::{Read, Write},
-    path::{Path, PathBuf},
+    path::Path,
     sync::{Arc, Mutex},
 };
 use tempfile::tempdir;
