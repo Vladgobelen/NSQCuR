@@ -3,7 +3,7 @@ use anyhow::Result;
 use reqwest::blocking::Client;
 use std::fs::{self, File};
 use std::io::{self, Cursor, Read, Write};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 use zip::ZipArchive;
 
@@ -44,33 +44,40 @@ fn handle_zip_install(
     let target_path = Path::new(&addon.target_path);
     let source_path = Path::new(&addon.source_path);
 
+    // Загрузка архива
     let mut response = client.get(&addon.link).send()?;
     let mut buffer = Vec::new();
     response.read_to_end(&mut buffer)?;
-    let mut reader = Cursor::new(buffer);
     let total_size = buffer.len() as u64;
+    let mut reader = Cursor::new(buffer);
 
+    // Подготовка директории
     if target_path.exists() {
         fs::remove_dir_all(target_path)?;
     }
     fs::create_dir_all(target_path)?;
 
+    // Распаковка
     let mut archive = ZipArchive::new(&mut reader)?;
+    let mut last_pos = 0;
 
     for i in 0..archive.len() {
         let mut file = archive.by_index(i)?;
         let file_path = file.mangled_name();
 
-        let relative_path = match source_path.to_str() {
-            Some("") => file_path.clone(),
-            _ => file_path
+        // Обработка путей
+        let relative_path = if source_path.as_os_str().is_empty() {
+            file_path
+        } else {
+            file_path
                 .strip_prefix(source_path)
-                .unwrap_or_else(|_| file_path.as_path())
-                .to_path_buf(),
+                .unwrap_or(&file_path)
+                .to_path_buf()
         };
 
         let outpath = target_path.join(relative_path);
 
+        // Создание файлов/папок
         if file.is_dir() {
             fs::create_dir_all(&outpath)?;
         } else {
@@ -81,8 +88,12 @@ fn handle_zip_install(
             io::copy(&mut file, &mut outfile)?;
         }
 
-        let pos = reader.position();
-        state.lock().unwrap().progress = pos as f32 / total_size as f32;
+        // Прогресс по позиции курсора
+        let current_pos = reader.position();
+        if current_pos > last_pos {
+            state.lock().unwrap().progress = current_pos as f32 / total_size as f32;
+            last_pos = current_pos;
+        }
     }
 
     Ok(check_addon_installed(addon))
