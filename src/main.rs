@@ -2,9 +2,7 @@ use eframe::egui;
 use reqwest::blocking::get;
 use std::fs::{self, create_dir_all, File};
 use std::io::Write;
-use std::io::{Cursor, Write};
 use std::path::PathBuf;
-use std::path::{Path, PathBuf};
 use zip::ZipArchive;
 
 // Структура аддона
