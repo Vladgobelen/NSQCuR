@@ -3,11 +3,13 @@ mod config;
 mod modules;
 
 use app::App;
-use eframe::IconData;
+use eframe::{egui, CreationContext};
+use egui::IconData;
+use egui::ViewportBuilder;
 
 fn main() -> Result<(), eframe::Error> {
     let options = eframe::NativeOptions {
-        viewport: eframe::viewport::ViewportBuilder::default()
+        viewport: ViewportBuilder::default()
             .with_inner_size([400.0, 600.0])
             .with_icon(load_icon().expect("Не удалось загрузить иконку")),
         ..Default::default()
