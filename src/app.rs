@@ -1,5 +1,7 @@
-use crate::config;
-use crate::modules::addon_manager;
+use crate::{
+    config,
+    modules::addon_manager::{self, AddonState},
+};
 use egui::{CentralPanel, ProgressBar, ScrollArea};
 use reqwest::blocking::Client;
 use serde::Deserialize;
@@ -80,12 +82,7 @@ impl App {
             };
 
             let mut state = state.lock().unwrap();
-            let success = result.is_ok() && result.unwrap_or(false) == desired_state;
-            state.target_state = Some(success);
-            println!(
-                "[DEBUG] UI updated for {}: installed = {}",
-                addon.name, success
-            );
+            state.target_state = Some(result.is_ok());
             state.installing = false;
         });
     }
@@ -102,11 +99,11 @@ impl eframe::App for App {
             ScrollArea::vertical().show(ui, |ui| {
                 for (i, (addon, state)) in self.addons.iter().enumerate() {
                     let state_lock = state.lock().unwrap();
-                    let current_state = state_lock.target_state.unwrap_or(false);
+                    let mut current_state = state_lock.target_state.unwrap_or(false);
 
                     ui.horizontal(|ui| {
                         let response = ui.add_enabled_ui(!state_lock.installing, |ui| {
-                            ui.checkbox(&mut current_state.clone(), "")
+                            ui.checkbox(&mut current_state, "")
                         });
 
                         if response.inner.changed() {

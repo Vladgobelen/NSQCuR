@@ -2,7 +2,7 @@ mod app;
 mod config;
 mod modules;
 
-use crate::app::App;
+use app::App;
 use egui::IconData;
 
 fn main() -> Result<(), eframe::Error> {
