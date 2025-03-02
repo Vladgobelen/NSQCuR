@@ -13,12 +13,20 @@ use tempfile::tempdir;
 use zip::ZipArchive;
 
 pub fn check_addon_installed(addon: &Addon) -> bool {
-    let install_path = get_install_path(addon);
-    install_path.exists() && install_path.is_dir()
-}
+    let main_path = Path::new(&addon.target_path).join(&addon.name);
 
-fn get_install_path(addon: &Addon) -> PathBuf {
-    Path::new(&addon.target_path).join(&addon.name)
+    if main_path.exists() {
+        return true;
+    }
+
+    let install_base = Path::new(&addon.target_path);
+    match fs::read_dir(install_base) {
+        Ok(entries) => entries.filter_map(|e| e.ok()).any(|e| {
+            let name = e.file_name().to_string_lossy().into_owned();
+            name.starts_with(&addon.name) || name.contains(&addon.name)
+        }),
+        Err(_) => false,
+    }
 }
 
 pub fn install_addon(
@@ -46,19 +54,29 @@ fn handle_zip_install(
     fs::create_dir_all(&extract_dir)?;
     extract_zip(&download_path, &extract_dir)?;
 
-    let install_path = get_install_path(addon);
+    let install_base = Path::new(&addon.target_path);
     let dir_entries: Vec<fs::DirEntry> = fs::read_dir(&extract_dir)?
         .filter_map(|e| e.ok())
         .filter(|e| e.metadata().map(|m| m.is_dir()).unwrap_or(false))
         .collect();
 
     match dir_entries.len() {
-        0 => copy_all_contents(&extract_dir, &install_path)?,
+        0 => copy_all_contents(&extract_dir, install_base)?,
+
         1 => {
             let source_dir = dir_entries[0].path();
+            let install_path = install_base.join(&addon.name);
             copy_all_contents(&source_dir, &install_path)?;
         }
-        _ => copy_all_contents(&extract_dir, &install_path)?,
+
+        _ => {
+            for dir_entry in dir_entries {
+                let source_dir = dir_entry.path();
+                let dir_name = dir_entry.file_name();
+                let install_path = install_base.join(dir_name);
+                copy_all_contents(&source_dir, &install_path)?;
+            }
+        }
     }
 
     Ok(check_addon_installed(addon))
@@ -127,7 +145,7 @@ fn handle_file_install(
     let download_path = temp_dir.path().join(&addon.name);
     download_file(client, &addon.link, &download_path, state)?;
 
-    let install_path = get_install_path(addon);
+    let install_path = Path::new(&addon.target_path).join(&addon.name);
     fs::create_dir_all(install_path.parent().unwrap())?;
     fs::copy(&download_path, &install_path)?;
 
@@ -135,9 +153,28 @@ fn handle_file_install(
 }
 
 pub fn uninstall_addon(addon: &Addon) -> Result<bool> {
-    let path = get_install_path(addon);
-    if path.exists() {
-        fs::remove_dir_all(&path)?;
+    let main_path = Path::new(&addon.target_path).join(&addon.name);
+    let mut success = true;
+
+    if main_path.exists() {
+        if let Err(e) = fs::remove_dir_all(&main_path) {
+            eprintln!("Error deleting main folder: {}", e);
+            success = false;
+        }
     }
-    Ok(!check_addon_installed(addon))
+
+    let install_base = Path::new(&addon.target_path);
+    if let Ok(entries) = fs::read_dir(install_base) {
+        for entry in entries.filter_map(|e| e.ok()) {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if name.contains(&addon.name) {
+                if let Err(e) = fs::remove_dir_all(entry.path()) {
+                    eprintln!("Error deleting component {}: {}", name, e);
+                    success = false;
+                }
+            }
+        }
+    }
+
+    Ok(success && !check_addon_installed(addon))
 }
