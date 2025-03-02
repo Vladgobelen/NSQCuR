@@ -80,8 +80,18 @@ fn move_contents(source: &Path, dest: &Path) -> Result<()> {
     }
     fs::create_dir_all(dest)?;
 
-    fs_extra::dir::copy(source, dest, &options)?;
-    println!("[DEBUG] Перенесено содержимое: {:?} → {:?}", source, dest);
+    for entry in fs::read_dir(source)? {
+        let entry = entry?;
+        let entry_path = entry.path();
+        let target_path = dest.join(entry.file_name());
+
+        if entry_path.is_dir() {
+            fs_extra::dir::copy(&entry_path, &target_path, &options)?;
+        } else {
+            fs::copy(&entry_path, &target_path)?;
+        }
+        println!("[DEBUG] Перенос: {:?} → {:?}", entry_path, target_path);
+    }
     Ok(())
 }
 

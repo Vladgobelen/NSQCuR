@@ -62,7 +62,9 @@ impl App {
             return;
         }
 
-        let desired_state = !state_lock.target_state.unwrap_or(false);
+        let current_actual_state = addon_manager::check_addon_installed(&addon);
+        let desired_state = !current_actual_state;
+
         state_lock.target_state = Some(desired_state);
         state_lock.installing = true;
         state_lock.progress = 0.0;
@@ -79,8 +81,15 @@ impl App {
             let mut state = state.lock().unwrap();
             state.installing = false;
 
-            if let Ok(success) = result {
-                state.target_state = Some(success);
+            match result {
+                Ok(success) => {
+                    state.target_state = Some(success);
+                }
+                Err(e) => {
+                    eprintln!("Ошибка: {:?}", e);
+                    // Возвращаем предыдущее состояние при ошибке
+                    state.target_state = Some(!desired_state);
+                }
             }
         });
     }
