@@ -208,9 +208,12 @@ fn main() {
         .init();
 
     let options = eframe::NativeOptions::default();
+
+    // Обработка Result через unwrap() или обработку ошибок
     eframe::run_native(
         "Nightwatch Updater",
         options,
-        Box::new(|_cc| Ok(Box::new(MyApp::new()))), // Добавьте Ok()
-    );
+        Box::new(|_cc| Ok(Box::new(MyApp::new()))),
+    )
+    .unwrap(); // Добавлен unwrap() для обработки ошибки
 }
