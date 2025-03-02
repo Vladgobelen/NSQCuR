@@ -7,7 +7,6 @@ mod modules;
 use anyhow::Result;
 use app::App;
 use eframe::egui::{IconData, ViewportBuilder};
-use log::error;
 use std::sync::Arc;
 
 fn main() -> Result<(), eframe::Error> {

@@ -58,25 +58,17 @@ fn handle_file_install(
     info!("[{}] File installation started", addon.name);
     let temp_dir = tempdir().inspect_err(|e| {
         error!("[{}] Tempdir error: {}", addon.name, e);
-        e
     })?;
 
-    debug!("[{}] Temp dir: {:?}", addon.name, temp_dir.path());
     let download_path = temp_dir.path().join(&addon.name);
-
-    // Скачивание
     download_file(client, &addon.link, &download_path, state)
         .inspect_err(|e| error!("[{}] Download failed: {}", addon.name, e))?;
 
     if !download_path.exists() {
-        error!("[{}] File not found after download", addon.name);
-        return Err(anyhow::anyhow!("File missing"));
+        return Err(anyhow::anyhow!("[{}] Downloaded file missing", addon.name));
     }
 
-    // Установка
     let install_path = Path::new(&addon.target_path).join(&addon.name);
-    debug!("[{}] Install path: {:?}", addon.name, install_path);
-
     if let Some(parent) = install_path.parent() {
         fs::create_dir_all(parent)
             .inspect_err(|e| error!("[{}] Create parent error: {}", addon.name, e))?;
@@ -85,14 +77,7 @@ fn handle_file_install(
     fs::copy(&download_path, &install_path)
         .inspect_err(|e| error!("[{}] Copy error: {}", addon.name, e))?;
 
-    let exists = install_path.exists();
-    if exists {
-        info!("[{}] Successfully installed", addon.name);
-    } else {
-        error!("[{}] Installation failed", addon.name);
-    }
-
-    Ok(exists)
+    Ok(install_path.exists())
 }
 
 fn handle_zip_install(
@@ -103,7 +88,6 @@ fn handle_zip_install(
     info!("[{}] ZIP installation started", addon.name);
     let temp_dir = tempdir().inspect_err(|e| {
         error!("[{}] Tempdir error: {}", addon.name, e);
-        e
     })?;
 
     let download_path = temp_dir.path().join(format!("{}.zip", addon.name));
@@ -119,7 +103,6 @@ fn handle_zip_install(
     let install_base = std::fs::canonicalize(Path::new(&addon.target_path))
         .inspect_err(|e| error!("[{}] Canonicalize error: {}", addon.name, e))?;
 
-    // Проверка структуры архива
     let entries: Vec<_> = fs::read_dir(&extract_dir)?
         .filter_map(|e| e.ok())
         .filter(|e| {
@@ -170,7 +153,7 @@ fn copy_all_contents(source: &Path, dest: &Path) -> Result<()> {
     fs_extra::dir::copy(
         source,
         dest,
-        DirCopyOptions::new().overwrite(true).content_only(true),
+        &DirCopyOptions::new().overwrite(true).content_only(true),
     )?;
 
     Ok(())
@@ -229,24 +212,6 @@ pub fn uninstall_addon(addon: &Addon) -> Result<bool> {
             if let Err(e) = result {
                 error!("[{}] Delete error: {} ({:?})", addon.name, e, path);
                 success = false;
-            }
-        }
-    }
-
-    // Удаление остаточных файлов
-    if let Ok(entries) = fs::read_dir(&addon.target_path) {
-        for entry in entries.filter_map(|e| e.ok()) {
-            let path = entry.path();
-            if path.to_string_lossy().contains(&addon.name) {
-                let result = if path.is_dir() {
-                    fs::remove_dir_all(&path)
-                } else {
-                    fs::remove_file(&path)
-                };
-
-                if let Err(e) = result {
-                    error!("[{}] Cleanup error: {} ({:?})", addon.name, e, path);
-                }
             }
         }
     }
