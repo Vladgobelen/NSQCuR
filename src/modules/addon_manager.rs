@@ -162,7 +162,7 @@ fn extract_zip(zip_path: &Path, target_dir: &Path) -> Result<()> {
     for i in 0..archive.len() {
         let mut file = archive.by_index(i)?;
         let outpath = match file.enclosed_name() {
-            Some(path) => normalize_zip_path(path, target_dir),
+            Some(path) => normalize_zip_path(&path, target_dir),
             None => continue,
         };
 
@@ -191,9 +191,11 @@ fn normalize_zip_path(path: &Path, base: &Path) -> PathBuf {
             Component::Prefix(_) => {}
             Component::RootDir => {}
             Component::CurDir => {}
-            Component::ParentDir => normalized.pop(),
+            Component::ParentDir => {
+                normalized.pop();
+            }
             Component::Normal(c) => normalized.push(c),
-        };
+        }
     }
 
     normalized
