@@ -1,86 +1,143 @@
 use crate::{config, modules::addon_manager};
-use eframe::egui;
-use serde::{Deserialize, Serialize};
+use egui::{CentralPanel, ProgressBar, ScrollArea};
+use reqwest::blocking::Client;
+use serde::Deserialize;
 use std::sync::{Arc, Mutex};
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Clone, Deserialize)]
 pub struct Addon {
     pub name: String,
     pub link: String,
+    pub description: String,
     pub target_path: String,
-    pub installed: bool,
 }
 
 #[derive(Default)]
 pub struct AddonState {
+    pub target_state: Option<bool>,
+    pub installing: bool,
     pub progress: f32,
 }
 
 pub struct App {
-    addons: Vec<Addon>,
-    state: Arc<Mutex<AddonState>>,
+    pub addons: Vec<(Addon, Arc<Mutex<AddonState>>)>,
+    pub client: Client,
 }
 
 impl App {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        let client = reqwest::blocking::Client::new();
-        let mut addons = match config::load_online_config(&client) {
-            Ok(online) => online,
-            Err(e) => {
-                log::error!("Failed to load config: {}", e);
-                Vec::new()
-            }
-        };
+        cc.egui_ctx.set_visuals(egui::Visuals::dark());
+        config::check_game_directory().unwrap_or_else(|e| panic!("{}", e));
 
-        if let Some(storage) = cc.storage {
-            if let Some(local) = eframe::get_value(storage, eframe::APP_KEY) {
-                merge_local_state(&mut addons, local);
-            }
-        }
+        let client = Client::new();
+        let addons =
+            config::load_addons_config_blocking(&client).expect("Failed to load addons config");
+
+        let addons_with_state = addons
+            .into_iter()
+            .map(|(_, addon)| {
+                let installed = addon_manager::check_addon_installed(&addon);
+                (
+                    addon,
+                    Arc::new(Mutex::new(AddonState {
+                        target_state: Some(installed),
+                        installing: false,
+                        progress: 0.0,
+                    })),
+                )
+            })
+            .collect();
 
         Self {
-            addons,
-            state: Arc::new(Mutex::new(AddonState { progress: 0.0 })),
+            addons: addons_with_state,
+            client,
         }
     }
-}
 
-fn merge_local_state(online: &mut [Addon], local: Vec<Addon>) {
-    for local_addon in local {
-        if let Some(online_addon) = online.iter_mut().find(|a| a.name == local_addon.name) {
-            online_addon.installed = local_addon.installed;
+    fn toggle_addon(&mut self, index: usize) {
+        let (addon, state) = self.addons[index].clone();
+        let mut state_lock = state.lock().unwrap();
+
+        if state_lock.installing {
+            return;
         }
+
+        let current_state = addon_manager::check_addon_installed(&addon);
+        let desired_state = !current_state;
+
+        state_lock.target_state = Some(desired_state);
+        state_lock.installing = true;
+        state_lock.progress = 0.0;
+        drop(state_lock);
+
+        let client = self.client.clone();
+        std::thread::spawn(move || {
+            let result = if desired_state {
+                addon_manager::install_addon(&client, &addon, state.clone())
+            } else {
+                addon_manager::uninstall_addon(&addon)
+            };
+
+            let mut state = state.lock().unwrap();
+            state.installing = false;
+
+            // Force check actual state
+            let actual_state = addon_manager::check_addon_installed(&addon);
+            state.target_state = Some(actual_state);
+
+            if let Err(e) = result {
+                eprintln!("Operation error: {:?}", e);
+            }
+        });
     }
 }
 
 impl eframe::App for App {
-    fn save(&mut self, storage: &mut dyn eframe::Storage) {
-        eframe::set_value(storage, eframe::APP_KEY, &self.addons);
-    }
-
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        egui::CentralPanel::default().show(ctx, |ui| {
-            for addon in &mut self.addons {
-                ui.horizontal(|ui| {
-                    ui.label(&addon.name);
+        CentralPanel::default().show(ctx, |ui| {
+            ui.heading("Addon Manager");
+            ui.separator();
 
-                    if addon.installed {
-                        if ui.button("Uninstall").clicked() {
-                            let result = addon_manager::uninstall_addon(addon);
-                            addon.installed = !result.unwrap_or(false);
-                        }
-                    } else if ui.button("Install").clicked() {
-                        let result = addon_manager::install_addon(
-                            &reqwest::blocking::Client::new(),
-                            addon,
-                            self.state.clone(),
-                        );
-                        addon.installed = result.unwrap_or(false);
+            let mut indices_to_toggle = Vec::new();
+
+            ScrollArea::vertical().show(ui, |ui| {
+                for (i, (addon, state)) in self.addons.iter().enumerate() {
+                    let mut state_lock = state.lock().unwrap();
+
+                    // Sync state before rendering
+                    let actual_state = addon_manager::check_addon_installed(addon);
+                    if state_lock.target_state != Some(actual_state) {
+                        state_lock.target_state = Some(actual_state);
                     }
 
-                    ui.add(egui::ProgressBar::new(self.state.lock().unwrap().progress));
-                });
+                    let mut current_state = state_lock.target_state.unwrap_or(false);
+
+                    ui.horizontal(|ui| {
+                        let enabled = !state_lock.installing;
+                        let response =
+                            ui.add_enabled_ui(enabled, |ui| ui.checkbox(&mut current_state, ""));
+
+                        if response.inner.changed() && enabled {
+                            indices_to_toggle.push(i);
+                        }
+
+                        ui.vertical(|ui| {
+                            ui.heading(&addon.name);
+                            ui.label(&addon.description);
+                            if state_lock.installing {
+                                ui.add(ProgressBar::new(state_lock.progress).show_percentage());
+                            }
+                        });
+                    });
+                    ui.separator();
+                }
+            });
+
+            for index in indices_to_toggle {
+                self.toggle_addon(index);
             }
         });
+
+        ctx.request_repaint();
     }
 }
