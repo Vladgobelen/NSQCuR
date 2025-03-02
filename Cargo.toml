@@ -20,7 +20,7 @@ tempfile = "3.5"
 indexmap = { version = "2.7.1", features = ["serde"] }
 fs_extra = "1.3.0"
 
-# Оптимизации для уменьшения размера
+# Оптимизации для уменьшения размер
 [profile.release]
 codegen-units = 1
 lto = true
