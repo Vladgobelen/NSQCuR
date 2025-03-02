@@ -54,33 +54,35 @@ fn handle_zip_install(
     fs::create_dir_all(&extract_dir)?;
     extract_zip(&download_path, &extract_dir)?;
 
-    let install_base = Path::new(&addon.target_path);
-    let dir_entries: Vec<fs::DirEntry> = fs::read_dir(&extract_dir)?
+    // Нормализуем пути и удаляем служебные директории
+    let entries: Vec<_> = fs::read_dir(&extract_dir)?
         .filter_map(|e| e.ok())
-        .filter(|e| e.metadata().map(|m| m.is_dir()).unwrap_or(false))
+        .filter(|e| {
+            let name = e.file_name().to_string_lossy().to_lowercase();
+            // Игнорируем служебные папки, например, __MACOSX
+            !name.starts_with("__") && !name.is_empty()
+        })
         .collect();
 
-    match dir_entries.len() {
-        0 => copy_all_contents(&extract_dir, install_base)?,
+    let install_base = Path::new(&addon.target_path);
 
-        1 => {
-            let source_dir = dir_entries[0].path();
-            let install_path = install_base.join(&addon.name);
-            copy_all_contents(&source_dir, &install_path)?;
-        }
+    // Если в архиве только одна директория с названием аддона — копируем её
+    let has_single_addon_dir = entries.iter().any(|e| {
+        e.file_name().to_string_lossy().eq_ignore_ascii_case(&addon.name)
+    });
 
-        _ => {
-            for dir_entry in dir_entries {
-                let source_dir = dir_entry.path();
-                let dir_name = dir_entry.file_name();
-                let install_path = install_base.join(dir_name);
-                copy_all_contents(&source_dir, &install_path)?;
-            }
-        }
+    if has_single_addon_dir {
+        let source_dir = extract_dir.join(&addon.name);
+        let install_path = install_base.join(&addon.name);
+        copy_all_contents(&source_dir, &install_path)?;
+    } else {
+        // Копируем все содержимое напрямую
+        copy_all_contents(&extract_dir, install_base)?;
     }
 
     Ok(check_addon_installed(addon))
 }
+
 
 fn copy_all_contents(source: &Path, dest: &Path) -> Result<()> {
     if dest.exists() {
