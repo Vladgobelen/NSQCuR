@@ -96,7 +96,7 @@ impl eframe::App for App {
 
             ScrollArea::vertical().show(ui, |ui| {
                 for (i, (addon, state)) in self.addons.iter().enumerate() {
-                    let mut state_lock = state.lock().unwrap();
+                    let state_lock = state.lock().unwrap(); // Исправлено: убран `mut`
                     let current_state = state_lock.target_state.unwrap_or(false);
 
                     ui.horizontal(|ui| {

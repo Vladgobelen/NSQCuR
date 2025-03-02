@@ -4,6 +4,7 @@ use fs_extra::{dir::CopyOptions, move_items};
 use reqwest::blocking::Client;
 use std::{
     fs,
+    fs::File,
     io::{Read, Write},
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
@@ -35,32 +36,27 @@ fn handle_zip_install(
     install_path: PathBuf,
     state: Arc<Mutex<AddonState>>,
 ) -> Result<bool> {
-    // 1. Скачивание архива
     let temp_dir = tempfile::tempdir()?;
     let download_path = temp_dir.path().join("archive.zip");
     download_file(client, &addon.link, &download_path, state.clone())?;
 
-    // 2. Распаковка
     let extract_dir = tempfile::tempdir()?;
     extract_zip(&download_path, extract_dir.path())?;
 
-    // 3. Анализ содержимого
     let entries: Vec<_> = fs::read_dir(extract_dir.path())?
         .filter_map(|e| e.ok())
         .collect();
 
     match entries.len() {
-        // 4. Один элемент - переименовываем
         1 => {
             let source = entries[0].path();
             if source.is_dir() {
                 move_renamed(&source, &install_path)?;
             } else {
-                fs::create_dir_all(&install_path.parent().unwrap())?;
+                fs::create_dir_all(install_path.parent().unwrap())?;
                 fs::rename(&source, &install_path)?;
             }
         }
-        // 5. Несколько элементов - перемещаем всё
         _ => {
             fs::create_dir_all(&install_path)?;
             move_all_contents(extract_dir.path(), &install_path)?;
