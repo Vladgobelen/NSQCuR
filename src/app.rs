@@ -80,7 +80,8 @@ impl App {
             };
 
             let mut state = state.lock().unwrap();
-            state.target_state = Some(result.unwrap_or(false));
+            let success = result.is_ok() && result.unwrap_or(false) == desired_state;
+            state.target_state = Some(success);
             state.installing = false;
         });
     }
@@ -96,7 +97,7 @@ impl eframe::App for App {
 
             ScrollArea::vertical().show(ui, |ui| {
                 for (i, (addon, state)) in self.addons.iter().enumerate() {
-                    let state_lock = state.lock().unwrap(); // Исправлено: убран `mut`
+                    let state_lock = state.lock().unwrap();
                     let current_state = state_lock.target_state.unwrap_or(false);
 
                     ui.horizontal(|ui| {

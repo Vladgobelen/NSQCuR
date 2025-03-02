@@ -13,7 +13,11 @@ use tempfile;
 use zip::ZipArchive;
 
 pub fn check_addon_installed(addon: &Addon) -> bool {
-    get_install_path(addon).exists()
+    let install_path = get_install_path(addon);
+    install_path.exists()
+        && fs::read_dir(install_path)
+            .map(|d| d.count() > 0)
+            .unwrap_or(false)
 }
 
 pub fn install_addon(
@@ -51,7 +55,7 @@ fn handle_zip_install(
         1 => {
             let source = entries[0].path();
             if source.is_dir() {
-                move_renamed(&source, &install_path)?;
+                move_dir_contents(&source, &install_path)?;
             } else {
                 fs::create_dir_all(install_path.parent().unwrap())?;
                 fs::rename(&source, &install_path)?;
@@ -64,6 +68,20 @@ fn handle_zip_install(
     }
 
     Ok(check_addon_installed(addon))
+}
+
+fn move_dir_contents(source: &Path, dest: &Path) -> Result<()> {
+    for entry in fs::read_dir(source)? {
+        let entry = entry?;
+        let target = dest.join(entry.file_name());
+        if entry.path().is_dir() {
+            fs::create_dir_all(&target)?;
+            move_dir_contents(&entry.path(), &target)?;
+        } else {
+            fs::rename(entry.path(), target)?;
+        }
+    }
+    Ok(())
 }
 
 fn handle_file_install(
@@ -89,17 +107,8 @@ pub fn uninstall_addon(addon: &Addon) -> Result<bool> {
     Ok(!check_addon_installed(addon))
 }
 
-// Вспомогательные функции
 fn get_install_path(addon: &Addon) -> PathBuf {
     Path::new(&addon.target_path).join(&addon.name)
-}
-
-fn move_renamed(source: &Path, dest: &Path) -> Result<()> {
-    if dest.exists() {
-        fs::remove_dir_all(dest)?;
-    }
-    fs::rename(source, dest)?;
-    Ok(())
 }
 
 fn move_all_contents(source: &Path, dest: &Path) -> Result<()> {
