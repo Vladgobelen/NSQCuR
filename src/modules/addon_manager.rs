@@ -1,5 +1,5 @@
 use crate::app::{Addon, AddonState};
-use anyhow::{Context, Result};
+use anyhow::Result;
 use fs_extra::dir::{copy, CopyOptions};
 use reqwest::blocking::Client;
 use std::fs::{self, File};
