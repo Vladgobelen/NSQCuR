@@ -4,25 +4,14 @@ use fs_extra::dir::{copy, CopyOptions};
 use reqwest::blocking::Client;
 use std::fs::{self, File};
 use std::io::{Read, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use tempfile;
 use zip::ZipArchive;
 
 pub fn check_addon_installed(addon: &Addon) -> bool {
-    let install_path = Path::new(&addon.target_path).join(&addon.name);
-
-    if !install_path.exists() {
-        return false;
-    }
-
-    if install_path.is_dir() {
-        fs::read_dir(&install_path)
-            .map(|mut d| d.next().is_some())
-            .unwrap_or(false)
-    } else {
-        true
-    }
+    let install_path = get_install_path(addon);
+    install_path.exists()
 }
 
 pub fn install_addon(
@@ -30,62 +19,42 @@ pub fn install_addon(
     addon: &Addon,
     state: Arc<Mutex<AddonState>>,
 ) -> Result<bool> {
+    let install_path = get_install_path(addon);
+
     if addon.link.ends_with(".zip") {
-        handle_zip_install(client, addon, state)
+        handle_zip_install(client, addon, install_path, state)
     } else {
-        handle_file_install(client, addon, state)
+        handle_file_install(client, addon, install_path, state)
     }
 }
 
 fn handle_zip_install(
     client: &Client,
     addon: &Addon,
+    install_path: PathBuf,
     state: Arc<Mutex<AddonState>>,
 ) -> Result<bool> {
-    let install_dir = Path::new(&addon.target_path).join(&addon.name);
-    let temp_dir = tempfile::tempdir().context("Failed to create temp dir")?;
+    let temp_dir = tempfile::tempdir()?;
     let download_path = temp_dir.path().join("download.zip");
 
-    // Загрузка архива
-    let mut response = client
-        .get(&addon.link)
-        .send()
-        .context("Failed to download archive")?;
-    let total_size = response.content_length().unwrap_or(1);
-    let mut file = File::create(&download_path).context("Failed to create temp file")?;
-
-    let mut downloaded = 0;
-    let mut buf = [0u8; 8192];
-    while let Ok(bytes_read) = response.read(&mut buf) {
-        if bytes_read == 0 {
-            break;
-        }
-        file.write_all(&buf[..bytes_read])
-            .context("Failed to write to temp file")?;
-        downloaded += bytes_read as u64;
-        state.lock().unwrap().progress = downloaded as f32 / total_size as f32;
-    }
+    // Скачивание архива
+    download_file(client, &addon.link, &download_path, state.clone())?;
 
     // Распаковка
-    let extract_temp_dir = tempfile::tempdir().context("Failed to create extract dir")?;
-    let file = File::open(&download_path).context("Failed to open downloaded file")?;
-    let mut archive = ZipArchive::new(file).context("Invalid ZIP archive")?;
-    archive
-        .extract(extract_temp_dir.path())
-        .context("Failed to extract archive")?;
+    let extract_temp_dir = tempfile::tempdir()?;
+    extract_zip(&download_path, extract_temp_dir.path())?;
 
-    // Удаление старой версии
-    if install_dir.exists() {
-        fs::remove_dir_all(&install_dir).context("Failed to remove old version")?;
-    }
-
-    // Копирование
+    // Копирование в целевую директорию
     let copy_options = CopyOptions::new()
         .overwrite(true)
         .content_only(false)
         .copy_inside(true);
 
-    copy(extract_temp_dir.path(), &install_dir, &copy_options).context("Failed to copy files")?;
+    if install_path.exists() {
+        fs::remove_dir_all(&install_path)?;
+    }
+
+    copy(extract_temp_dir.path(), &install_path, &copy_options)?;
 
     Ok(check_addon_installed(addon))
 }
@@ -93,19 +62,41 @@ fn handle_zip_install(
 fn handle_file_install(
     client: &Client,
     addon: &Addon,
+    install_path: PathBuf,
     state: Arc<Mutex<AddonState>>,
 ) -> Result<bool> {
-    let install_path = Path::new(&addon.target_path).join(&addon.name);
-    if let Some(parent) = install_path.parent() {
-        fs::create_dir_all(parent).context("Failed to create parent dir")?;
+    download_file(client, &addon.link, &install_path, state)?;
+    Ok(check_addon_installed(addon))
+}
+
+pub fn uninstall_addon(addon: &Addon) -> Result<bool> {
+    let install_path = get_install_path(addon);
+
+    if install_path.exists() {
+        if install_path.is_dir() {
+            fs::remove_dir_all(&install_path)?;
+        } else {
+            fs::remove_file(&install_path)?;
+        }
     }
 
-    let mut response = client
-        .get(&addon.link)
-        .send()
-        .context("Failed to download file")?;
+    Ok(!check_addon_installed(addon))
+}
+
+// Вспомогательные функции
+fn get_install_path(addon: &Addon) -> PathBuf {
+    Path::new(&addon.target_path).join(&addon.name)
+}
+
+fn download_file(
+    client: &Client,
+    url: &str,
+    path: &Path,
+    state: Arc<Mutex<AddonState>>,
+) -> Result<()> {
+    let mut response = client.get(url).send()?;
     let total_size = response.content_length().unwrap_or(1);
-    let mut file = File::create(&install_path).context("Failed to create target file")?;
+    let mut file = File::create(path)?;
 
     let mut downloaded = 0;
     let mut buf = [0u8; 8192];
@@ -114,25 +105,17 @@ fn handle_file_install(
         if bytes_read == 0 {
             break;
         }
-        file.write_all(&buf[..bytes_read])
-            .context("Failed to write to file")?;
+        file.write_all(&buf[..bytes_read])?;
         downloaded += bytes_read as u64;
         state.lock().unwrap().progress = downloaded as f32 / total_size as f32;
     }
 
-    Ok(check_addon_installed(addon))
+    Ok(())
 }
 
-pub fn uninstall_addon(addon: &Addon) -> Result<bool> {
-    let install_path = Path::new(&addon.target_path).join(&addon.name);
-
-    if install_path.exists() {
-        if install_path.is_dir() {
-            fs::remove_dir_all(&install_path).context("Failed to remove directory")?;
-        } else {
-            fs::remove_file(&install_path).context("Failed to remove file")?;
-        }
-    }
-
-    Ok(!check_addon_installed(addon))
+fn extract_zip(zip_path: &Path, target_dir: &Path) -> Result<()> {
+    let file = File::open(zip_path)?;
+    let mut archive = ZipArchive::new(file)?;
+    archive.extract(target_dir)?;
+    Ok(())
 }
