@@ -1,6 +1,6 @@
 use crate::app::{Addon, AddonState};
 use anyhow::{Context, Result};
-use fs_extra::dir::CopyOptions;
+use fs_extra::{dir::CopyOptions as DirCopyOptions, file::CopyOptions as FileCopyOptions};
 use reqwest::blocking::Client;
 use std::{
     fs,
@@ -83,7 +83,8 @@ fn log_directory_structure(path: &Path) -> Result<()> {
 
 fn move_contents(source: &Path, dest: &Path) -> Result<()> {
     fs::create_dir_all(dest)?;
-    let options = CopyOptions::new().overwrite(true);
+    let dir_options = DirCopyOptions::new().overwrite(true);
+    let file_options = FileCopyOptions::new().overwrite(true);
 
     for entry in fs::read_dir(source)? {
         let entry = entry?;
@@ -91,9 +92,9 @@ fn move_contents(source: &Path, dest: &Path) -> Result<()> {
         let target = dest.join(entry.file_name());
 
         if entry_path.is_dir() {
-            fs_extra::dir::copy(entry_path, &target, &options)?;
+            fs_extra::dir::copy(entry_path, &target, &dir_options)?;
         } else {
-            fs_extra::file::copy(entry_path, &target, &options)?;
+            fs_extra::file::copy(entry_path, &target, &file_options)?;
         }
         println!("[DEBUG] Перенос: {:?} -> {:?}", entry_path, target);
     }
