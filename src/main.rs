@@ -3,7 +3,7 @@ mod config;
 mod modules;
 
 use app::App;
-use eframe::{egui, CreationContext};
+use eframe::egui;
 use egui::IconData;
 use egui::ViewportBuilder;
 
