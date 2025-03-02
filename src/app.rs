@@ -62,8 +62,8 @@ impl App {
             return;
         }
 
-        let current_actual_state = addon_manager::check_addon_installed(&addon);
-        let desired_state = !current_actual_state;
+        let current_state = addon_manager::check_addon_installed(&addon);
+        let desired_state = !current_state;
 
         state_lock.target_state = Some(desired_state);
         state_lock.installing = true;
@@ -81,15 +81,12 @@ impl App {
             let mut state = state.lock().unwrap();
             state.installing = false;
 
-            match result {
-                Ok(success) => {
-                    state.target_state = Some(success);
-                }
-                Err(e) => {
-                    eprintln!("Ошибка: {:?}", e);
-                    // Возвращаем предыдущее состояние при ошибке
-                    state.target_state = Some(!desired_state);
-                }
+            // Принудительная проверка реального состояния
+            let actual_state = addon_manager::check_addon_installed(&addon);
+            state.target_state = Some(actual_state);
+
+            if let Err(e) = result {
+                eprintln!("Ошибка операции: {:?}", e);
             }
         });
     }
@@ -105,7 +102,14 @@ impl eframe::App for App {
 
             ScrollArea::vertical().show(ui, |ui| {
                 for (i, (addon, state)) in self.addons.iter().enumerate() {
-                    let state_lock = state.lock().unwrap();
+                    let mut state_lock = state.lock().unwrap();
+
+                    // Синхронизация состояния перед отрисовкой
+                    let actual_state = addon_manager::check_addon_installed(addon);
+                    if state_lock.target_state != Some(actual_state) {
+                        state_lock.target_state = Some(actual_state);
+                    }
+
                     let mut current_state = state_lock.target_state.unwrap_or(false);
 
                     ui.horizontal(|ui| {

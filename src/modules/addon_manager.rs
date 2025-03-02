@@ -14,16 +14,31 @@ use zip::ZipArchive;
 const TEMP_DIR: &str = "tmp_debug";
 
 pub fn check_addon_installed(addon: &Addon) -> bool {
-    get_install_path(addon).exists()
+    let install_path = get_install_path(addon);
+    if addon.link.ends_with(".zip") {
+        // Для ZIP-аддонов проверяем наличие любого файла .toc
+        fs::read_dir(install_path)
+            .map(|entries| {
+                entries
+                    .filter(|e| {
+                        e.as_ref()
+                            .unwrap()
+                            .path()
+                            .extension()
+                            .map_or(false, |ext| ext == "toc")
+                    })
+                    .next()
+                    .is_some()
+            })
+            .unwrap_or(false)
+    } else {
+        // Для одиночных файлов проверяем существование
+        install_path.exists()
+    }
 }
 
 fn get_install_path(addon: &Addon) -> PathBuf {
-    let base_path = if addon.target_path.is_empty() {
-        PathBuf::from(".")
-    } else {
-        PathBuf::from(&addon.target_path)
-    };
-    base_path.join(&addon.name)
+    Path::new(&addon.target_path).to_path_buf()
 }
 
 pub fn install_addon(
@@ -53,45 +68,41 @@ fn handle_zip_install(
     println!("[DEBUG] Распаковываем в: {:?}", extract_dir);
     extract_zip(&download_path, &extract_dir)?;
 
-    let archive_root = find_archive_root(&extract_dir)?;
-    println!("[DEBUG] Корень архива: {:?}", archive_root);
-
     let install_path = get_install_path(addon);
-    move_contents(&archive_root, &install_path)?;
+    let entries: Vec<_> = fs::read_dir(&extract_dir)?.collect();
+
+    // Если есть ровно одна директория - используем её содержимое
+    if entries.len() == 1 && entries[0].as_ref().unwrap().file_type()?.is_dir() {
+        let root_folder = entries[0].as_ref().unwrap().path();
+        move_contents(&root_folder, &install_path)?;
+    } else {
+        move_contents(&extract_dir, &install_path)?;
+    }
 
     Ok(check_addon_installed(addon))
-}
-
-fn find_archive_root(extract_dir: &Path) -> Result<PathBuf> {
-    let entries: Vec<_> = fs::read_dir(extract_dir)?.filter_map(|e| e.ok()).collect();
-
-    if entries.len() == 1 && entries[0].file_type()?.is_dir() {
-        Ok(entries[0].path())
-    } else {
-        Ok(extract_dir.to_path_buf())
-    }
 }
 
 fn move_contents(source: &Path, dest: &Path) -> Result<()> {
     let options = DirCopyOptions::new().overwrite(true).content_only(true);
 
     if dest.exists() {
-        fs::remove_dir_all(dest).with_context(|| format!("Ошибка удаления: {:?}", dest))?;
+        fs::remove_dir_all(dest).context(format!("Ошибка удаления: {:?}", dest))?;
     }
-    fs::create_dir_all(dest)?;
+    fs::create_dir_all(dest.parent().unwrap_or(Path::new(".")))?;
 
     for entry in fs::read_dir(source)? {
         let entry = entry?;
         let entry_path = entry.path();
-        let target_path = dest.join(entry.file_name());
+        let target = dest.join(entry.file_name());
 
         if entry_path.is_dir() {
-            fs_extra::dir::copy(&entry_path, &target_path, &options)?;
+            fs_extra::dir::copy(&entry_path, &target, &options)?;
         } else {
-            fs::copy(&entry_path, &target_path)?;
+            fs::copy(&entry_path, &target)?;
         }
-        println!("[DEBUG] Перенос: {:?} → {:?}", entry_path, target_path);
+        println!("[DEBUG] Копирование: {:?} -> {:?}", entry_path, target);
     }
+
     Ok(())
 }
 
@@ -131,7 +142,7 @@ fn handle_file_install(
     addon: &Addon,
     state: Arc<Mutex<AddonState>>,
 ) -> Result<bool> {
-    let install_path = get_install_path(addon);
+    let install_path = get_install_path(addon).join(&addon.name);
     fs::create_dir_all(install_path.parent().unwrap())?;
     download_file(client, &addon.link, &install_path, state)?;
     Ok(install_path.exists())
