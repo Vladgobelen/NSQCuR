@@ -65,18 +65,18 @@ fn handle_zip_install(
         .collect();
 
     match dir_entries.len() {
-        0 => copy_all_contents(&extract_dir, install_base, addon)?,
+        0 => copy_all_contents(&extract_dir, install_base)?,
         1 => {
             let source_dir = dir_entries[0].path();
             let install_path = install_base.join(&addon.name);
-            copy_all_contents(&source_dir, &install_path, addon)?
+            copy_all_contents(&source_dir, &install_path)?
         }
         _ => {
             for dir_entry in dir_entries {
                 let source_dir = dir_entry.path();
                 let dir_name = normalize_path(&dir_entry.file_name());
                 let install_path = install_base.join(dir_name);
-                copy_all_contents(&source_dir, &install_path, addon)?
+                copy_all_contents(&source_dir, &install_path)?
             }
         }
     }
@@ -84,7 +84,7 @@ fn handle_zip_install(
     Ok(check_addon_installed(addon))
 }
 
-fn copy_all_contents(source: &Path, dest: &Path, addon: &Addon) -> Result<()> {
+fn copy_all_contents(source: &Path, dest: &Path) -> Result<()> {
     if dest.exists() {
         fs::remove_dir_all(dest).context(format!(
             "Failed to remove existing directory: {}",
@@ -103,7 +103,7 @@ fn copy_all_contents(source: &Path, dest: &Path, addon: &Addon) -> Result<()> {
         let target_path = dest.join(entry.file_name());
 
         if entry_path.is_dir() {
-            copy_dir_all(&entry_path, &target_path, addon)?;
+            copy_dir_all(&entry_path, &target_path)?;
         } else {
             fs::copy(&entry_path, &target_path)
                 .context(format!("Failed to copy file: {}", entry_path.display()))?;
@@ -113,7 +113,7 @@ fn copy_all_contents(source: &Path, dest: &Path, addon: &Addon) -> Result<()> {
     Ok(())
 }
 
-fn copy_dir_all(src: &Path, dst: &Path, addon: &Addon) -> Result<()> {
+fn copy_dir_all(src: &Path, dst: &Path) -> Result<()> {
     fs::create_dir_all(dst)?;
 
     for entry in fs::read_dir(src)? {
@@ -122,7 +122,7 @@ fn copy_dir_all(src: &Path, dst: &Path, addon: &Addon) -> Result<()> {
         let dest = dst.join(entry.file_name());
 
         if entry.file_type()?.is_dir() {
-            copy_dir_all(&path, &dest, addon)?;
+            copy_dir_all(&path, &dest)?;
         } else {
             fs::copy(&path, &dest).context(format!("Failed to copy file: {}", path.display()))?;
         }
