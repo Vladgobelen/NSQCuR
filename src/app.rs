@@ -1,5 +1,4 @@
 use crate::{config, modules::addon_manager};
-use anyhow::Result;
 use egui::{CentralPanel, ProgressBar, ScrollArea};
 use log::{debug, error, info, warn};
 use reqwest::blocking::Client;
