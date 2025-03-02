@@ -3,24 +3,39 @@ name: Build and Release
 on:
   push:
     tags:
-      - 'v*'  # Запускать при создании тега вида v1.0.0
+      - 'v*'
 
 jobs:
-  build:
+  build-and-release:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Сборка проекта
-        run: |
-          # Здесь команды для сборки (например, cargo build --release)
-          echo "Собираем проект"
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          components: rustc, llvm-tools-preview
 
-      - name: Создание релиза
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build for Windows
+        run: cargo build --release --target x86_64-pc-windows-msvc
+
+      - name: Build for Linux
+        run: cargo build --release --target x86_64-unknown-linux-gnu
+
+      - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
+          tag_name: ${{ github.ref }}
+          name: Release ${{ github.ref_name }}
+          body: |
+            Nightwatch Updater ${{ github.ref_name }}
+            - Windows x86_64 executable
+            - Linux x86_64 executable
           files: |
-            target/release/nightwatch-updater
-          generate_release_notes: true
+            target/x86_64-pc-windows-msvc/release/nightwatch-updater.exe
+            target/x86_64-unknown-linux-gnu/release/nightwatch-updater
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
