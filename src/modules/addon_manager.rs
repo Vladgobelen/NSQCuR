@@ -12,8 +12,14 @@ use zip::ZipArchive;
 pub fn check_addon_installed(addon: &Addon) -> bool {
     let path = Path::new(&addon.target_path);
     let exists = path.exists();
+
     let correct_type = match addon.addon_type {
-        0 | 2 => path.is_dir(),
+        0 | 2 => {
+            path.is_dir()
+                && fs::read_dir(path)
+                    .map(|mut d| d.next().is_some())
+                    .unwrap_or(false)
+        }
         1 => path.is_file(),
         _ => false,
     };
@@ -123,15 +129,24 @@ fn handle_file_install(
 }
 
 pub fn uninstall_addon(addon: &Addon) -> Result<bool> {
-    let path = Path::new(&addon.delete_path);
+    let delete_path = Path::new(&addon.delete_path);
+    let target_path = Path::new(&addon.target_path);
 
-    if path.exists() {
+    let mut success = true;
+
+    if delete_path.exists() {
         match addon.addon_type {
-            0 | 2 => fs::remove_dir_all(path)?,
-            1 => fs::remove_file(path)?,
+            0 | 2 => fs::remove_dir_all(delete_path)?,
+            1 => fs::remove_file(delete_path)?,
             _ => {}
         }
+        success &= !delete_path.exists();
     }
 
-    Ok(!check_addon_installed(addon))
+    if target_path.exists() && target_path != delete_path {
+        let _ = fs::remove_dir_all(target_path).or_else(|_| fs::remove_file(target_path));
+        success &= !target_path.exists();
+    }
+
+    Ok(success && !check_addon_installed(addon))
 }

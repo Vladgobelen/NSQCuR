@@ -110,14 +110,17 @@ impl eframe::App for App {
 
             ScrollArea::vertical().show(ui, |ui| {
                 for (i, (addon, state)) in self.addons.iter().enumerate() {
-                    let state = state.lock().unwrap();
-                    let current_state = state
-                        .target_state
-                        .unwrap_or_else(|| addon_manager::check_addon_installed(addon));
+                    let mut state_lock = state.lock().unwrap();
+                    let current_actual_state = addon_manager::check_addon_installed(addon);
+
+                    if state_lock.target_state.is_none() {
+                        state_lock.target_state = Some(current_actual_state);
+                    }
 
                     ui.horizontal(|ui| {
-                        let response = ui.add_enabled_ui(!state.installing, |ui| {
-                            ui.checkbox(&mut current_state.clone(), "")
+                        let mut desired_state = state_lock.target_state.unwrap_or(false);
+                        let response = ui.add_enabled_ui(!state_lock.installing, |ui| {
+                            ui.checkbox(&mut desired_state, "")
                         });
 
                         if response.inner.changed() {
@@ -127,8 +130,10 @@ impl eframe::App for App {
                         ui.vertical(|ui| {
                             ui.heading(&addon.name);
                             ui.label(&addon.description);
-                            if state.installing {
-                                ui.add(ProgressBar::new(state.progress).show_percentage());
+                            if state_lock.installing {
+                                ui.add(ProgressBar::new(state_lock.progress).show_percentage());
+                            } else {
+                                state_lock.target_state = Some(current_actual_state);
                             }
                         });
                     });
