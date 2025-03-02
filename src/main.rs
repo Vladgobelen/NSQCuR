@@ -6,7 +6,7 @@ mod modules;
 
 use anyhow::Result;
 use app::App;
-use eframe::egui::{self, IconData, ViewportBuilder};
+use eframe::egui::{IconData, ViewportBuilder}; // Исправленный импорт
 use log::error;
 use std::sync::Arc;
 

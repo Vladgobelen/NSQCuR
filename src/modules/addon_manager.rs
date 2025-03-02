@@ -7,7 +7,7 @@ use std::{
     fs,
     fs::File,
     io::{Read, Write},
-    path::{Component, Path, PathBuf},
+    path::Path,
     sync::{Arc, Mutex},
 };
 use tempfile::tempdir;
@@ -35,12 +35,6 @@ pub fn check_addon_installed(addon: &Addon) -> bool {
             false
         }
     }
-}
-
-fn normalize_path(path: &Path) -> PathBuf {
-    path.components()
-        .filter(|c| matches!(c, Component::Normal(_)))
-        .collect()
 }
 
 pub fn install_addon(
