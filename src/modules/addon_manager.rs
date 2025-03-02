@@ -1,5 +1,5 @@
 use crate::app::{Addon, AddonState};
-use anyhow::Result;
+use anyhow::{Context, Result};
 use fs_extra::dir::CopyOptions as DirCopyOptions;
 use reqwest::blocking::Client;
 use std::{
@@ -12,7 +12,8 @@ use std::{
 use tempfile::tempdir;
 use zip::ZipArchive;
 
-const TEMP_DIR: &str = "tmp_debug";
+// Удаляем неиспользуемую константу TEMP_DIR
+// const TEMP_DIR: &str = "tmp_debug";
 
 pub fn check_addon_installed(addon: &Addon) -> bool {
     let install_path = get_install_path(addon);
