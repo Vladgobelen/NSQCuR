@@ -6,18 +6,27 @@ mod modules;
 
 use anyhow::Result;
 use app::App;
-use eframe::egui;
-use egui::{IconData, ViewportBuilder};
+use eframe::egui::{self, IconData, ViewportBuilder};
 use log::error;
 use std::sync::Arc;
 
 fn main() -> Result<(), eframe::Error> {
     env_logger::init();
 
+    let icon_result = load_icon();
+    let mut viewport_builder = ViewportBuilder::default().with_inner_size([400.0, 600.0]);
+
+    match icon_result {
+        Ok(icon) => {
+            viewport_builder = viewport_builder.with_icon(Arc::new(icon));
+        }
+        Err(e) => {
+            error!("Failed to load icon: {}", e);
+        }
+    }
+
     let options = eframe::NativeOptions {
-        viewport: ViewportBuilder::default()
-            .with_inner_size([400.0, 600.0])
-            .with_icon(load_icon().map(|icon| Arc::new(icon)).ok()),
+        viewport: viewport_builder,
         ..Default::default()
     };
 
