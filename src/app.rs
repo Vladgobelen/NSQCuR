@@ -82,6 +82,10 @@ impl App {
             let mut state = state.lock().unwrap();
             let success = result.is_ok() && result.unwrap_or(false) == desired_state;
             state.target_state = Some(success);
+            println!(
+                "[DEBUG] UI updated for {}: installed = {}",
+                addon.name, success
+            );
             state.installing = false;
         });
     }

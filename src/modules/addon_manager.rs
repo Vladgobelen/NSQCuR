@@ -1,154 +1,90 @@
-use crate::app::{Addon, AddonState};
-use anyhow::Result;
-use fs_extra::{dir::CopyOptions, move_items};
-use reqwest::blocking::Client;
-use std::{
-    fs,
-    fs::File,
-    io::{Read, Write},
-    path::{Path, PathBuf},
-    sync::{Arc, Mutex},
-};
-use tempfile;
-use zip::ZipArchive;
-
-pub fn check_addon_installed(addon: &Addon) -> bool {
-    let install_path = get_install_path(addon);
-    install_path.exists()
-        && fs::read_dir(install_path)
-            .map(|d| d.count() > 0)
-            .unwrap_or(false)
-}
-
-pub fn install_addon(
-    client: &Client,
-    addon: &Addon,
-    state: Arc<Mutex<AddonState>>,
-) -> Result<bool> {
-    let install_path = get_install_path(addon);
-
-    if addon.link.ends_with(".zip") {
-        handle_zip_install(client, addon, install_path, state)
-    } else {
-        handle_file_install(client, addon, install_path, state)
-    }
-}
-
 fn handle_zip_install(
     client: &Client,
     addon: &Addon,
     install_path: PathBuf,
     state: Arc<Mutex<AddonState>>,
 ) -> Result<bool> {
+    println!("[DEBUG] Starting ZIP install for: {}", addon.name);
+
     let temp_dir = tempfile::tempdir()?;
     let download_path = temp_dir.path().join("archive.zip");
+    println!("[DEBUG] Downloading to: {:?}", download_path);
     download_file(client, &addon.link, &download_path, state.clone())?;
 
     let extract_dir = tempfile::tempdir()?;
+    println!("[DEBUG] Extracting to: {:?}", extract_dir.path());
     extract_zip(&download_path, extract_dir.path())?;
 
+    // Анализ содержимого архива
     let entries: Vec<_> = fs::read_dir(extract_dir.path())?
         .filter_map(|e| e.ok())
         .collect();
 
+    println!("[DEBUG] Archive contents ({} items):", entries.len());
+    for entry in &entries {
+        println!("  - {:?}", entry.path());
+    }
+
     match entries.len() {
+        // Одна папка/файл - переносим содержимое
         1 => {
             let source = entries[0].path();
+            println!("[DEBUG] Single item found: {:?}", source);
+
             if source.is_dir() {
-                move_dir_contents(&source, &install_path)?;
+                println!(
+                    "[DEBUG] Moving directory contents from: {:?} to: {:?}",
+                    source, install_path
+                );
+
+                // Удаляем целевую директорию если существует
+                if install_path.exists() {
+                    fs::remove_dir_all(&install_path)?;
+                }
+                fs::create_dir_all(&install_path)?;
+
+                // Копируем содержимое папки
+                for entry in fs::read_dir(&source)? {
+                    let entry = entry?;
+                    let target = install_path.join(entry.file_name());
+                    println!("  [DEBUG] Moving: {:?} -> {:?}", entry.path(), target);
+
+                    if entry.path().is_dir() {
+                        fs_extra::dir::copy(entry.path(), &target, &CopyOptions::new())?;
+                    } else {
+                        fs::rename(entry.path(), target)?;
+                    }
+                }
             } else {
+                println!("[DEBUG] Moving single file to: {:?}", install_path);
                 fs::create_dir_all(install_path.parent().unwrap())?;
                 fs::rename(&source, &install_path)?;
             }
         }
+
+        // Несколько элементов - переносим всё
         _ => {
+            println!("[DEBUG] Moving all contents to: {:?}", install_path);
             fs::create_dir_all(&install_path)?;
-            move_all_contents(extract_dir.path(), &install_path)?;
+
+            for entry in entries {
+                let entry_path = entry.path();
+                let target = install_path.join(entry.file_name());
+                println!("  [DEBUG] Moving: {:?} -> {:?}", entry_path, target);
+
+                if entry_path.is_dir() {
+                    fs_extra::dir::copy(entry_path, &target, &CopyOptions::new())?;
+                } else {
+                    fs::rename(entry_path, target)?;
+                }
+            }
         }
     }
+
+    println!(
+        "[DEBUG] Install completed. Path exists: {}",
+        check_addon_installed(addon)
+    );
 
     Ok(check_addon_installed(addon))
-}
-
-fn move_dir_contents(source: &Path, dest: &Path) -> Result<()> {
-    for entry in fs::read_dir(source)? {
-        let entry = entry?;
-        let target = dest.join(entry.file_name());
-        if entry.path().is_dir() {
-            fs::create_dir_all(&target)?;
-            move_dir_contents(&entry.path(), &target)?;
-        } else {
-            fs::rename(entry.path(), target)?;
-        }
-    }
-    Ok(())
-}
-
-fn handle_file_install(
-    client: &Client,
-    addon: &Addon,
-    install_path: PathBuf,
-    state: Arc<Mutex<AddonState>>,
-) -> Result<bool> {
-    fs::create_dir_all(install_path.parent().unwrap())?;
-    download_file(client, &addon.link, &install_path, state)?;
-    Ok(check_addon_installed(addon))
-}
-
-pub fn uninstall_addon(addon: &Addon) -> Result<bool> {
-    let path = get_install_path(addon);
-    if path.exists() {
-        if path.is_dir() {
-            fs::remove_dir_all(path)?;
-        } else {
-            fs::remove_file(path)?;
-        }
-    }
-    Ok(!check_addon_installed(addon))
-}
-
-fn get_install_path(addon: &Addon) -> PathBuf {
-    Path::new(&addon.target_path).join(&addon.name)
-}
-
-fn move_all_contents(source: &Path, dest: &Path) -> Result<()> {
-    let options = CopyOptions::new().overwrite(true);
-    let items: Vec<_> = fs::read_dir(source)?
-        .filter_map(|e| e.ok())
-        .map(|e| e.path())
-        .collect();
-    move_items(&items, dest, &options)?;
-    Ok(())
-}
-
-fn download_file(
-    client: &Client,
-    url: &str,
-    path: &Path,
-    state: Arc<Mutex<AddonState>>,
-) -> Result<()> {
-    let mut response = client.get(url).send()?;
-    let total_size = response.content_length().unwrap_or(1);
-    let mut file = File::create(path)?;
-
-    let mut downloaded = 0;
-    let mut buf = [0u8; 8192];
-
-    while let Ok(bytes_read) = response.read(&mut buf) {
-        if bytes_read == 0 {
-            break;
-        }
-        file.write_all(&buf[..bytes_read])?;
-        downloaded += bytes_read as u64;
-        state.lock().unwrap().progress = downloaded as f32 / total_size as f32;
-    }
-
-    Ok(())
-}
-
-fn extract_zip(zip_path: &Path, target_dir: &Path) -> Result<()> {
-    let file = File::open(zip_path)?;
-    let mut archive = ZipArchive::new(file)?;
-    archive.extract(target_dir)?;
-    Ok(())
 }
