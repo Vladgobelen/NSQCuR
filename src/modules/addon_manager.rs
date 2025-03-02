@@ -1,5 +1,5 @@
 use crate::app::{Addon, AddonState};
-use anyhow::{Context, Result};
+use anyhow::Result;
 use fs_extra::dir::CopyOptions as DirCopyOptions;
 use log::{debug, error, info, warn};
 use reqwest::blocking::Client;
@@ -54,6 +54,26 @@ pub fn install_addon(
     } else {
         handle_file_install(client, addon, state)
     }
+}
+
+fn handle_file_install(
+    client: &Client,
+    addon: &Addon,
+    state: Arc<Mutex<AddonState>>,
+) -> Result<bool> {
+    info!("Processing file installation for {}", addon.name);
+    let temp_dir = tempdir().inspect_err(|e| error!("Tempdir error: {}", e))?;
+    let download_path = temp_dir.path().join(&addon.name);
+
+    download_file(client, &addon.link, &download_path, state)?;
+
+    let install_path = Path::new(&addon.target_path).join(&addon.name);
+    fs::create_dir_all(install_path.parent().unwrap())
+        .inspect_err(|e| error!("Create parent dir error: {}", e))?;
+
+    fs::copy(&download_path, &install_path).inspect_err(|e| error!("File copy error: {}", e))?;
+
+    Ok(install_path.exists())
 }
 
 fn handle_zip_install(
@@ -214,7 +234,7 @@ pub fn uninstall_addon(addon: &Addon) -> Result<bool> {
 
     if main_path.exists() {
         if let Err(e) = fs::remove_dir_all(&main_path) {
-            eprintln!("Error deleting main folder: {}", e);
+            error!("Error deleting main folder: {}", e);
             success = false;
         }
     }
@@ -225,7 +245,7 @@ pub fn uninstall_addon(addon: &Addon) -> Result<bool> {
             let name = entry.file_name().to_string_lossy().into_owned();
             if name.contains(&addon.name) {
                 if let Err(e) = fs::remove_dir_all(entry.path()) {
-                    eprintln!("Error deleting component {}: {}", name, e);
+                    error!("Error deleting component {}: {}", name, e);
                     success = false;
                 }
             }
