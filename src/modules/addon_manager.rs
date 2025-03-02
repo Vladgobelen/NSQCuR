@@ -3,7 +3,7 @@ use anyhow::Result;
 use reqwest::blocking::Client;
 use std::fs::{self, File};
 use std::io::{self, Cursor, Read, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use zip::ZipArchive;
 
@@ -44,37 +44,33 @@ fn handle_zip_install(
     let target_path = Path::new(&addon.target_path);
     let source_path = Path::new(&addon.source_path);
 
-    // Загрузка и буферизация архива
     let mut response = client.get(&addon.link).send()?;
     let mut buffer = Vec::new();
     response.read_to_end(&mut buffer)?;
     let mut reader = Cursor::new(buffer);
     let total_size = buffer.len() as u64;
 
-    // Подготовка директории
     if target_path.exists() {
         fs::remove_dir_all(target_path)?;
     }
     fs::create_dir_all(target_path)?;
 
-    // Обработка архива
     let mut archive = ZipArchive::new(&mut reader)?;
 
     for i in 0..archive.len() {
         let mut file = archive.by_index(i)?;
         let file_path = file.mangled_name();
 
-        // Фильтрация пути
         let relative_path = match source_path.to_str() {
-            Some("") => file_path,
+            Some("") => file_path.clone(),
             _ => file_path
                 .strip_prefix(source_path)
-                .unwrap_or_else(|_| file_path),
+                .unwrap_or_else(|_| file_path.as_path())
+                .to_path_buf(),
         };
 
         let outpath = target_path.join(relative_path);
 
-        // Создание директорий/файлов
         if file.is_dir() {
             fs::create_dir_all(&outpath)?;
         } else {
@@ -85,8 +81,7 @@ fn handle_zip_install(
             io::copy(&mut file, &mut outfile)?;
         }
 
-        // Обновление прогресса
-        let pos = file.offset();
+        let pos = reader.position();
         state.lock().unwrap().progress = pos as f32 / total_size as f32;
     }
 
