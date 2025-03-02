@@ -1,7 +1,4 @@
-use crate::{
-    config,
-    modules::addon_manager::{self, AddonState},
-};
+use crate::{config, modules::addon_manager};
 use egui::{CentralPanel, ProgressBar, ScrollArea};
 use reqwest::blocking::Client;
 use serde::Deserialize;
