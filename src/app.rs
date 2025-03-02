@@ -1,5 +1,7 @@
 use crate::{config, modules::addon_manager};
+use anyhow::Result;
 use egui::{CentralPanel, ProgressBar, ScrollArea};
+use log::{debug, error, info, warn};
 use reqwest::blocking::Client;
 use serde::Deserialize;
 use std::sync::{Arc, Mutex};
@@ -26,17 +28,31 @@ pub struct App {
 
 impl App {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+        info!("Initializing application");
         cc.egui_ctx.set_visuals(egui::Visuals::dark());
-        config::check_game_directory().unwrap_or_else(|e| panic!("{}", e));
+
+        if let Err(e) = config::check_game_directory() {
+            error!("Game directory check failed: {}", e);
+            panic!("{}", e);
+        }
 
         let client = Client::new();
-        let addons =
-            config::load_addons_config_blocking(&client).expect("Failed to load addons config");
+        info!("HTTP client created");
+
+        let addons = config::load_addons_config_blocking(&client)
+            .inspect_err(|e| error!("Failed to load addons config: {}", e))
+            .expect("Failed to load addons config");
+
+        info!("Loaded {} addons", addons.len());
 
         let addons_with_state = addons
             .into_iter()
             .map(|(_, addon)| {
                 let installed = addon_manager::check_addon_installed(&addon);
+                debug!(
+                    "Addon: {}, installed: {}, path: {}",
+                    addon.name, installed, addon.target_path
+                );
                 (
                     addon,
                     Arc::new(Mutex::new(AddonState {
@@ -56,14 +72,21 @@ impl App {
 
     fn toggle_addon(&mut self, index: usize) {
         let (addon, state) = self.addons[index].clone();
+        info!("User toggled addon: {}", addon.name);
         let mut state_lock = state.lock().unwrap();
 
         if state_lock.installing {
+            warn!("Addon {} is already being processed", addon.name);
             return;
         }
 
         let current_state = addon_manager::check_addon_installed(&addon);
         let desired_state = !current_state;
+
+        info!(
+            "Current state: {}, desired state: {}",
+            current_state, desired_state
+        );
 
         state_lock.target_state = Some(desired_state);
         state_lock.installing = true;
@@ -72,6 +95,16 @@ impl App {
 
         let client = self.client.clone();
         std::thread::spawn(move || {
+            info!(
+                "Starting {} operation for {}",
+                if desired_state {
+                    "install"
+                } else {
+                    "uninstall"
+                },
+                addon.name
+            );
+
             let result = if desired_state {
                 addon_manager::install_addon(&client, &addon, state.clone())
             } else {
@@ -81,12 +114,15 @@ impl App {
             let mut state = state.lock().unwrap();
             state.installing = false;
 
-            // Force check actual state
             let actual_state = addon_manager::check_addon_installed(&addon);
+            info!(
+                "Operation completed for {}. Actual state: {}",
+                addon.name, actual_state
+            );
             state.target_state = Some(actual_state);
 
             if let Err(e) = result {
-                eprintln!("Operation error: {:?}", e);
+                error!("Operation failed for {}: {}", addon.name, e);
             }
         });
     }
@@ -104,9 +140,14 @@ impl eframe::App for App {
                 for (i, (addon, state)) in self.addons.iter().enumerate() {
                     let mut state_lock = state.lock().unwrap();
 
-                    // Sync state before rendering
                     let actual_state = addon_manager::check_addon_installed(addon);
                     if state_lock.target_state != Some(actual_state) {
+                        debug!(
+                            "State mismatch for {}. Updating from {} to {}",
+                            addon.name,
+                            state_lock.target_state.unwrap_or(false),
+                            actual_state
+                        );
                         state_lock.target_state = Some(actual_state);
                     }
 
@@ -118,6 +159,7 @@ impl eframe::App for App {
                             ui.add_enabled_ui(enabled, |ui| ui.checkbox(&mut current_state, ""));
 
                         if response.inner.changed() && enabled {
+                            info!("UI change detected for {}", addon.name);
                             indices_to_toggle.push(i);
                         }
 

@@ -6,10 +6,29 @@ mod modules;
 
 use app::App;
 use eframe::egui;
-use egui::IconData;
-use egui::ViewportBuilder;
+use egui::{IconData, ViewportBuilder};
+use simplelog::*;
+use std::fs::File;
 
 fn main() -> Result<(), eframe::Error> {
+    // Инициализация логгера
+    CombinedLogger::init(vec![
+        TermLogger::new(
+            LevelFilter::Trace,
+            Config::default(),
+            TerminalMode::Mixed,
+            ColorChoice::Auto,
+        ),
+        WriteLogger::new(
+            LevelFilter::Trace,
+            Config::default(),
+            File::create("nightwatch-updater.log").expect("Failed to create log file"),
+        ),
+    ])
+    .expect("Failed to initialize logger");
+
+    log::info!("Starting application");
+
     let options = eframe::NativeOptions {
         viewport: ViewportBuilder::default()
             .with_inner_size([400.0, 600.0])
