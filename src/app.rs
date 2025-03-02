@@ -81,12 +81,12 @@ impl App {
             let mut state = state.lock().unwrap();
             state.installing = false;
 
-            // Принудительная проверка реального состояния
+            // Force check actual state
             let actual_state = addon_manager::check_addon_installed(&addon);
             state.target_state = Some(actual_state);
 
             if let Err(e) = result {
-                eprintln!("Ошибка операции: {:?}", e);
+                eprintln!("Operation error: {:?}", e);
             }
         });
     }
@@ -95,7 +95,7 @@ impl App {
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         CentralPanel::default().show(ctx, |ui| {
-            ui.heading("Менеджер аддонов");
+            ui.heading("Addon Manager");
             ui.separator();
 
             let mut indices_to_toggle = Vec::new();
@@ -104,7 +104,7 @@ impl eframe::App for App {
                 for (i, (addon, state)) in self.addons.iter().enumerate() {
                     let mut state_lock = state.lock().unwrap();
 
-                    // Синхронизация состояния перед отрисовкой
+                    // Sync state before rendering
                     let actual_state = addon_manager::check_addon_installed(addon);
                     if state_lock.target_state != Some(actual_state) {
                         state_lock.target_state = Some(actual_state);
