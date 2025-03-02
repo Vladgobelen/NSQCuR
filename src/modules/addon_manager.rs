@@ -1,7 +1,7 @@
 use crate::app::{Addon, AddonState};
-use anyhow::{Context, Result};
+use anyhow::Result;
 use fs_extra::dir::CopyOptions as DirCopyOptions;
-use log::{debug, error, info};
+use log::{debug, info};
 use reqwest::blocking::Client;
 use std::{
     fs,

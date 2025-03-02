@@ -29,8 +29,7 @@ pub fn load_online_config(client: &Client) -> Result<Vec<Addon>> {
             link: raw.download_url,
             target_path: PathBuf::from(raw.target_path)
                 .to_string_lossy()
-                .replace('/', std::path::MAIN_SEPARATOR.to_string().as_str())
-                .into(),
+                .replace('/', std::path::MAIN_SEPARATOR.to_string().as_str()),
             installed: false,
         })
         .collect())

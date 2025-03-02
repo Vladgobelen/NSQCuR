@@ -1,10 +1,7 @@
 use crate::{config, modules::addon_manager};
 use eframe::egui;
 use serde::{Deserialize, Serialize};
-use std::{
-    path::PathBuf,
-    sync::{Arc, Mutex},
-};
+use std::sync::{Arc, Mutex};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Addon {
@@ -48,7 +45,7 @@ impl App {
     }
 }
 
-fn merge_local_state(online: &mut Vec<Addon>, local: Vec<Addon>) {
+fn merge_local_state(online: &mut [Addon], local: Vec<Addon>) {
     for local_addon in local {
         if let Some(online_addon) = online.iter_mut().find(|a| a.name == local_addon.name) {
             online_addon.installed = local_addon.installed;
@@ -72,15 +69,13 @@ impl eframe::App for App {
                             let result = addon_manager::uninstall_addon(addon);
                             addon.installed = !result.unwrap_or(false);
                         }
-                    } else {
-                        if ui.button("Install").clicked() {
-                            let result = addon_manager::install_addon(
-                                &reqwest::blocking::Client::new(),
-                                addon,
-                                self.state.clone(),
-                            );
-                            addon.installed = result.unwrap_or(false);
-                        }
+                    } else if ui.button("Install").clicked() {
+                        let result = addon_manager::install_addon(
+                            &reqwest::blocking::Client::new(),
+                            addon,
+                            self.state.clone(),
+                        );
+                        addon.installed = result.unwrap_or(false);
                     }
 
                     ui.add(egui::ProgressBar::new(self.state.lock().unwrap().progress));
