@@ -6,34 +6,37 @@ on:
       - 'v*'
 
 jobs:
-  build-and-release:
+  create-release:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Rust
+      - name: Install Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: stable
           components: rustc, llvm-tools-preview
+          profile: minimal
+
+      - name: Add Windows target
+        run: rustup target add x86_64-pc-windows-msvc
+
+      - name: Add Linux target
+        run: rustup target add x86_64-unknown-linux-gnu
 
       - uses: Swatinem/rust-cache@v2
 
-      - name: Build for Windows
+      - name: Build Windows
         run: cargo build --release --target x86_64-pc-windows-msvc
 
-      - name: Build for Linux
+      - name: Build Linux
         run: cargo build --release --target x86_64-unknown-linux-gnu
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ github.ref }}
-          name: Release ${{ github.ref_name }}
-          body: |
-            Nightwatch Updater ${{ github.ref_name }}
-            - Windows x86_64 executable
-            - Linux x86_64 executable
+          name: "Release ${{ github.ref_name }}"
           files: |
             target/x86_64-pc-windows-msvc/release/nightwatch-updater.exe
             target/x86_64-unknown-linux-gnu/release/nightwatch-updater
