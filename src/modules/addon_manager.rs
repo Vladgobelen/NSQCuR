@@ -68,7 +68,9 @@ fn handle_zip_install(
 
     // Если в архиве только одна директория с названием аддона — копируем её
     let has_single_addon_dir = entries.iter().any(|e| {
-        e.file_name().to_string_lossy().eq_ignore_ascii_case(&addon.name)
+        e.file_name()
+            .to_string_lossy()
+            .eq_ignore_ascii_case(&addon.name)
     });
 
     if has_single_addon_dir {
@@ -82,7 +84,6 @@ fn handle_zip_install(
 
     Ok(check_addon_installed(addon))
 }
-
 
 fn copy_all_contents(source: &Path, dest: &Path) -> Result<()> {
     if dest.exists() {
