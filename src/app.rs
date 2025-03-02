@@ -62,9 +62,7 @@ impl App {
             return;
         }
 
-        let current_actual_state = addon_manager::check_addon_installed(&addon);
-        let desired_state = !current_actual_state;
-
+        let desired_state = !state_lock.target_state.unwrap_or(false);
         state_lock.target_state = Some(desired_state);
         state_lock.installing = true;
         state_lock.progress = 0.0;
@@ -79,9 +77,11 @@ impl App {
             };
 
             let mut state = state.lock().unwrap();
-            // Обновление состояния после операции
-            state.target_state = Some(result.unwrap_or(false));
             state.installing = false;
+
+            if let Ok(success) = result {
+                state.target_state = Some(success);
+            }
         });
     }
 }
@@ -100,11 +100,11 @@ impl eframe::App for App {
                     let mut current_state = state_lock.target_state.unwrap_or(false);
 
                     ui.horizontal(|ui| {
-                        let response = ui.add_enabled_ui(!state_lock.installing, |ui| {
-                            ui.checkbox(&mut current_state, "")
-                        });
+                        let enabled = !state_lock.installing;
+                        let response =
+                            ui.add_enabled_ui(enabled, |ui| ui.checkbox(&mut current_state, ""));
 
-                        if response.inner.changed() {
+                        if response.inner.changed() && enabled {
                             indices_to_toggle.push(i);
                         }
 

@@ -15,6 +15,15 @@ pub fn load_addons_config_blocking(client: &Client) -> Result<IndexMap<String, A
     let response = client
         .get("https://raw.githubusercontent.com/Vladgobelen/NSQCu/refs/heads/main/addons.json")
         .send()?;
+
+    if !response.status().is_success() {
+        return Err(anyhow::anyhow!(
+            "HTTP Error: {} - {}",
+            response.status(),
+            response.text()?
+        ));
+    }
+
     let text = response.text()?;
 
     #[derive(Deserialize)]

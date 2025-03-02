@@ -18,9 +18,8 @@ pub fn check_addon_installed(addon: &Addon) -> bool {
 }
 
 fn get_install_path(addon: &Addon) -> PathBuf {
-    // Обработка пустого target_path
     let base_path = if addon.target_path.is_empty() {
-        PathBuf::from(".") // Корень игры (замените на реальный путь)
+        PathBuf::from(".")
     } else {
         PathBuf::from(&addon.target_path)
     };
@@ -46,21 +45,17 @@ fn handle_zip_install(
     addon: &Addon,
     state: Arc<Mutex<AddonState>>,
 ) -> Result<bool> {
-    // Скачивание
     let download_path = Path::new(TEMP_DIR).join(format!("{}.zip", addon.name));
     println!("[DEBUG] Скачиваем архив: {:?}", download_path);
     download_file(client, &addon.link, &download_path, state.clone())?;
 
-    // Распаковка
     let extract_dir = Path::new(TEMP_DIR).join(&addon.name);
     println!("[DEBUG] Распаковываем в: {:?}", extract_dir);
     extract_zip(&download_path, &extract_dir)?;
 
-    // Определяем корневую папку
     let archive_root = find_archive_root(&extract_dir)?;
     println!("[DEBUG] Корень архива: {:?}", archive_root);
 
-    // Перенос содержимого
     let install_path = get_install_path(addon);
     move_contents(&archive_root, &install_path)?;
 
@@ -70,7 +65,6 @@ fn handle_zip_install(
 fn find_archive_root(extract_dir: &Path) -> Result<PathBuf> {
     let entries: Vec<_> = fs::read_dir(extract_dir)?.filter_map(|e| e.ok()).collect();
 
-    // Если архив содержит одну папку - используем её
     if entries.len() == 1 && entries[0].file_type()?.is_dir() {
         Ok(entries[0].path())
     } else {
@@ -79,15 +73,15 @@ fn find_archive_root(extract_dir: &Path) -> Result<PathBuf> {
 }
 
 fn move_contents(source: &Path, dest: &Path) -> Result<()> {
-    let options = DirCopyOptions::new().overwrite(true).content_only(true); // Перенос содержимого, а не папки
+    let options = DirCopyOptions::new().overwrite(true).content_only(true);
 
     if dest.exists() {
-        fs::remove_dir_all(dest).context("Ошибка удаления старой версии")?;
+        fs::remove_dir_all(dest).with_context(|| format!("Ошибка удаления: {:?}", dest))?;
     }
     fs::create_dir_all(dest)?;
 
     fs_extra::dir::copy(source, dest, &options)?;
-    println!("[DEBUG] Перенесено: {:?} → {:?}", source, dest);
+    println!("[DEBUG] Перенесено содержимое: {:?} → {:?}", source, dest);
     Ok(())
 }
 
