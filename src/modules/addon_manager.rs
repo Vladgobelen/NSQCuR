@@ -95,7 +95,7 @@ fn download_file(
 
     let mut attempts = 0;
     let max_attempts = 3;
-    let mut total_size = 0;
+    let total_size; // Исправлено: убрано начальное значение
 
     let response = loop {
         let result = client
