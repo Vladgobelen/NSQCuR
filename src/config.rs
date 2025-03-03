@@ -14,6 +14,7 @@ struct AddonConfig {
 pub fn load_addons_config_blocking(client: &Client) -> Result<IndexMap<String, Addon>> {
     let response = client
         .get("https://raw.githubusercontent.com/Vladgobelen/NSQCu/refs/heads/main/addons.json")
+        .header("User-Agent", "NightWatchUpdater/1.0")
         .send()?;
 
     if !response.status().is_success() {

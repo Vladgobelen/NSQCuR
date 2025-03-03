@@ -62,13 +62,11 @@ fn handle_zip_install(
 
     match dir_entries.len() {
         0 => copy_all_contents(&extract_dir, install_base)?,
-
         1 => {
             let source_dir = dir_entries[0].path();
             let install_path = install_base.join(&addon.name);
             copy_all_contents(&source_dir, &install_path)?;
         }
-
         _ => {
             for dir_entry in dir_entries {
                 let source_dir = dir_entry.path();
@@ -111,7 +109,11 @@ fn download_file(
     path: &Path,
     state: Arc<Mutex<AddonState>>,
 ) -> Result<()> {
-    let mut response = client.get(url).send()?;
+    let mut response = client
+        .get(url)
+        .header("User-Agent", "NightWatchUpdater/1.0")
+        .send()?;
+
     let total_size = response.content_length().unwrap_or(1);
     let mut file = File::create(path)?;
 

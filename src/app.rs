@@ -29,7 +29,13 @@ impl App {
         cc.egui_ctx.set_visuals(egui::Visuals::dark());
         config::check_game_directory().unwrap_or_else(|e| panic!("{}", e));
 
-        let client = Client::new();
+        let client = Client::builder()
+            .user_agent("NightWatchUpdater/1.0")
+            // Раскомментировать для тестирования с проблемными сертификатами:
+            // .danger_accept_invalid_certs(true)
+            .build()
+            .expect("Failed to create HTTP client");
+
         let addons =
             config::load_addons_config_blocking(&client).expect("Failed to load addons config");
 
@@ -81,7 +87,6 @@ impl App {
             let mut state = state.lock().unwrap();
             state.installing = false;
 
-            // Force check actual state
             let actual_state = addon_manager::check_addon_installed(&addon);
             state.target_state = Some(actual_state);
 
@@ -104,7 +109,6 @@ impl eframe::App for App {
                 for (i, (addon, state)) in self.addons.iter().enumerate() {
                     let mut state_lock = state.lock().unwrap();
 
-                    // Sync state before rendering
                     let actual_state = addon_manager::check_addon_installed(addon);
                     if state_lock.target_state != Some(actual_state) {
                         state_lock.target_state = Some(actual_state);
