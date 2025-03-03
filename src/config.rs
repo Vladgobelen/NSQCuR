@@ -1,7 +1,7 @@
 use crate::app::Addon;
 use anyhow::Result;
 use indexmap::IndexMap;
-use log::{error, info};
+use log::info;
 use reqwest::blocking::Client;
 use serde::{de, Deserialize};
 use std::path::PathBuf;
@@ -29,12 +29,7 @@ pub fn load_addons_config_blocking(client: &Client) -> Result<IndexMap<String, A
         .send()?;
 
     if !response.status().is_success() {
-        error!("Config load error: {}", response.status());
-        return Err(anyhow::anyhow!(
-            "HTTP Error: {} - {}",
-            response.status(),
-            response.text()?
-        ));
+        return Err(anyhow::anyhow!("HTTP Error: {}", response.status()));
     }
 
     let text = response.text()?;

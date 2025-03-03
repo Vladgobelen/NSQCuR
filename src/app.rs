@@ -1,8 +1,9 @@
 use eframe::egui::{self, CentralPanel, ProgressBar, ScrollArea};
 use log::{error, info};
-use reqwest::blocking::Client;
+use reqwest::Client;
 use serde::Deserialize;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 #[derive(Clone, Deserialize)]
 pub struct Addon {
@@ -31,8 +32,6 @@ impl App {
 
         let client = Client::builder()
             .user_agent("NightWatchUpdater/1.0")
-            .danger_accept_invalid_certs(true)
-            .timeout(std::time::Duration::from_secs(300))
             .build()
             .expect("Failed to create HTTP client");
 
@@ -62,43 +61,27 @@ impl App {
 
     fn toggle_addon(&mut self, index: usize) {
         let (addon, state) = self.addons[index].clone();
-        let mut state_lock = state.lock().unwrap();
-
-        if state_lock.installing {
-            return;
-        }
-
-        let current_state = crate::modules::addon_manager::check_addon_installed(&addon);
-        let desired_state = !current_state;
-
-        info!(
-            "Changing state: {} -> {}",
-            addon.name,
-            if desired_state {
-                "Install"
-            } else {
-                "Uninstall"
-            }
-        );
-
-        state_lock.target_state = Some(desired_state);
-        state_lock.installing = true;
-        state_lock.progress = 0.0;
-        drop(state_lock);
-
         let client = self.client.clone();
-        std::thread::spawn(move || {
+
+        tokio::spawn(async move {
+            let mut state_lock = state.lock().await;
+            let current_state = crate::modules::addon_manager::check_addon_installed(&addon);
+            let desired_state = !current_state;
+
+            state_lock.installing = true;
+            state_lock.target_state = Some(desired_state);
+            state_lock.progress = 0.0;
+            drop(state_lock);
+
             let result = if desired_state {
-                crate::modules::addon_manager::install_addon(&client, &addon, state.clone())
+                crate::modules::addon_manager::install_addon(&client, &addon, state.clone()).await
             } else {
                 crate::modules::addon_manager::uninstall_addon(&addon)
             };
 
-            let mut state = state.lock().unwrap();
+            let mut state = state.lock().await;
             state.installing = false;
-
-            let actual_state = crate::modules::addon_manager::check_addon_installed(&addon);
-            state.target_state = Some(actual_state);
+            state.target_state = Some(crate::modules::addon_manager::check_addon_installed(&addon));
 
             if let Err(e) = result {
                 error!("Operation failed: {} - {:?}", addon.name, e);
@@ -117,29 +100,24 @@ impl eframe::App for App {
 
             ScrollArea::vertical().show(ui, |ui| {
                 for (i, (addon, state)) in self.addons.iter().enumerate() {
-                    let mut state_lock = state.lock().unwrap();
-
-                    let actual_state = crate::modules::addon_manager::check_addon_installed(addon);
-                    if state_lock.target_state != Some(actual_state) {
-                        state_lock.target_state = Some(actual_state);
-                    }
-
-                    let mut current_state = state_lock.target_state.unwrap_or(false);
+                    let state = state.blocking_lock();
 
                     ui.horizontal(|ui| {
-                        let enabled = !state_lock.installing;
+                        let enabled = !state.installing;
+                        let mut current_state = state.target_state.unwrap_or(false);
+
                         let response =
                             ui.add_enabled_ui(enabled, |ui| ui.checkbox(&mut current_state, ""));
 
-                        if response.inner.changed() && enabled {
+                        if response.inner.changed() {
                             indices_to_toggle.push(i);
                         }
 
                         ui.vertical(|ui| {
                             ui.heading(&addon.name);
                             ui.label(&addon.description);
-                            if state_lock.installing {
-                                ui.add(ProgressBar::new(state_lock.progress).show_percentage());
+                            if state.installing {
+                                ui.add(ProgressBar::new(state.progress).show_percentage());
                             }
                         });
                     });
@@ -151,7 +129,5 @@ impl eframe::App for App {
                 self.toggle_addon(index);
             }
         });
-
-        ctx.request_repaint();
     }
 }
