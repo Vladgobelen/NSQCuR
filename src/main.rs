@@ -10,7 +10,7 @@ use log::error;
 
 fn main() -> eframe::Result<()> {
     std::panic::set_hook(Box::new(|panic_info| {
-        error!("Panic occurred: {:?}", panic_info);
+        error!("CRITICAL PANIC: {:?}", panic_info);
     }));
 
     let log_file = std::fs::File::create("debug.log").unwrap();

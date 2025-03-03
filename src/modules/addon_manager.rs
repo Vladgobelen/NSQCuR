@@ -115,8 +115,12 @@ fn handle_file_install(
 
     let target_path = config::base_dir().join(&addon.target_path).join(&file_name);
 
-    fs::create_dir_all(target_path.parent().unwrap())
-        .context("🔴 Failed to create target directory")?;
+    if let Some(parent) = target_path.parent() {
+        fs::create_dir_all(parent).context(format!(
+            "🔴 Failed to create directory: {}",
+            parent.display()
+        ))?;
+    }
 
     download_file(client, &addon.link, &target_path, state)?;
 
@@ -250,14 +254,15 @@ pub fn uninstall_addon(addon: &Addon) -> Result<bool> {
         let file_path = base_dir.join(&addon.target_path).join(file_name);
         info!("🗑 Attempting to delete file: {}", file_path.display());
 
-        if file_path.exists() {
-            if let Err(e) = fs::remove_file(&file_path) {
+        match fs::remove_file(&file_path) {
+            Ok(_) => info!("Deleted successfully"),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                warn!("File not found: {}", file_path.display())
+            }
+            Err(e) => {
                 error!("Deletion error: {}", e);
                 success = false;
             }
-        } else {
-            warn!("File not found: {}", file_path.display());
-            success = false;
         }
     }
 
