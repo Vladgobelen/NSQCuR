@@ -135,7 +135,7 @@ impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         if !self.initial_size_set {
             ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::Vec2::new(
-                800.0, 600.0,
+                400.0, 600.0,
             )));
             self.initial_size_set = true;
         }
