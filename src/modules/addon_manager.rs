@@ -158,31 +158,12 @@ fn download_file(
 fn copy_all_contents(source: &Path, dest: &Path) -> Result<()> {
     info!("📁 Copying: [{}] -> [{}]", source.display(), dest.display());
 
-    if dest.exists() {
-        let mut attempts = 0;
-        let max_attempts = 3;
-        loop {
-            match fs::remove_dir_all(dest) {
-                Ok(_) => break,
-                Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
-                    if attempts >= max_attempts {
-                        return Err(e).context("🚮 Failed to clean target directory");
-                    }
-                    warn!(
-                        "Retrying delete... (attempt {}/{})",
-                        attempts + 1,
-                        max_attempts
-                    );
-                    std::thread::sleep(Duration::from_secs(1));
-                    attempts += 1;
-                }
-                Err(e) => return Err(e).context("🚮 Failed to clean target directory"),
-            }
-        }
-    }
-
+    // Создаем целевую директорию, если её нет
     fs::create_dir_all(dest)?;
-    let options = DirCopyOptions::new().overwrite(true).content_only(true);
+
+    let options = DirCopyOptions::new()
+        .overwrite(true) // Перезаписываем существующие файлы
+        .content_only(true); // Копируем только содержимое директории
 
     for entry in fs::read_dir(source)? {
         let entry = entry?;
