@@ -30,7 +30,7 @@ pub fn check_addon_installed(addon: &Addon) -> bool {
 
 pub fn check_nsqc_update(client: &Agent) -> Result<bool> {
     let remote_version = client
-        .get("https://raw.githubusercontent.com/Vladgobelen/NSQC/refs/heads/main/vers")
+        .get("https://github.com/Vladgobelen/NSQC/blob/main/vers")
         .call()?
         .into_string()?;
 
@@ -49,11 +49,21 @@ pub fn check_nsqc_update(client: &Agent) -> Result<bool> {
 }
 
 pub fn install_addon(client: &Agent, addon: &Addon, state: Arc<Mutex<AddonState>>) -> Result<bool> {
-    if addon.link.ends_with(".zip") {
-        handle_zip_install(client, addon, state)
+    let success = if addon.link.ends_with(".zip") {
+        handle_zip_install(client, addon, state)?
     } else {
-        handle_file_install(client, addon, state)
+        handle_file_install(client, addon, state)?
+    };
+
+    // Проверка обновления после установки NSQC
+    if addon.name == "NSQC" && success {
+        if let Ok(needs_update) = check_nsqc_update(client) {
+            let mut state = state.lock().unwrap();
+            state.needs_update = needs_update;
+        }
     }
+
+    Ok(success)
 }
 
 fn handle_zip_install(
@@ -62,12 +72,8 @@ fn handle_zip_install(
     state: Arc<Mutex<AddonState>>,
 ) -> Result<bool> {
     info!("🚀 Starting ZIP install: {}", addon.name);
-
     let temp_dir = tempdir().context("🔴 Failed to create temp dir")?;
     let download_path = temp_dir.path().join(format!("{}.zip", addon.name));
-
-    info!("📂 Temp dir: {}", temp_dir.path().display());
-    info!("📥 ZIP path: {}", download_path.display());
 
     download_file(client, &addon.link, &download_path, state.clone())?;
 
@@ -112,7 +118,6 @@ fn download_file(
     state: Arc<Mutex<AddonState>>,
 ) -> Result<()> {
     info!("⏬ Downloading: {}", url);
-
     let mut attempts = 0;
     let max_attempts = 3;
     let total_size;
@@ -198,7 +203,6 @@ fn copy_all_contents(source: &Path, dest: &Path) -> Result<()> {
 
 pub fn uninstall_addon(addon: &Addon) -> Result<bool> {
     info!("Starting uninstall: {}", addon.name);
-
     let base_dir = config::base_dir();
     let main_path = base_dir.join(&addon.target_path).join(&addon.name);
     let mut success = true;
@@ -257,7 +261,6 @@ fn handle_file_install(
     state: Arc<Mutex<AddonState>>,
 ) -> Result<bool> {
     info!("Installing file: {}", addon.name);
-
     let temp_dir = tempdir()?;
     let download_path = temp_dir.path().join(&addon.name);
     download_file(client, &addon.link, &download_path, state)?;

@@ -1,3 +1,49 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
+mod app;
+mod config;
+mod modules;
+
+use app::App;
+use egui::IconData;
+use std::time::{Duration, Instant};
+
+fn main() -> eframe::Result<()> {
+    simplelog::CombinedLogger::init(vec![simplelog::WriteLogger::new(
+        simplelog::LevelFilter::Info,
+        simplelog::Config::default(),
+        std::fs::File::create("updater.log").unwrap(),
+    )])
+    .unwrap();
+
+    let options = eframe::NativeOptions {
+        viewport: eframe::egui::ViewportBuilder::default()
+            .with_inner_size([400.0, 600.0])
+            .with_icon(load_icon().expect("Failed to load icon")),
+        ..Default::default()
+    };
+
+    eframe::run_native(
+        "Night Watch Updater",
+        options,
+        Box::new(|cc| Ok(Box::new(App::new(cc)))),
+    )
+}
+
+fn load_icon() -> Option<IconData> {
+    let icon_bytes = include_bytes!("../resources/emblem.ico");
+    let image = image::load_from_memory(icon_bytes).ok()?.to_rgba8();
+    let (width, height) = (image.width(), image.height());
+    let rgba = image.into_raw();
+
+    Some(IconData {
+        rgba,
+        width,
+        height,
+    })
+}
+
+// Основная реализация приложения
 use eframe::egui::{self, CentralPanel, ProgressBar, ScrollArea};
 use log::{error, info};
 use serde::Deserialize;
@@ -25,6 +71,8 @@ pub struct App {
     pub addons: Vec<(Addon, Arc<Mutex<AddonState>>)>,
     pub client: Agent,
     pub game_available: bool,
+    last_nsqc_check: Instant,
+    nsqc_check_interval: Duration,
 }
 
 impl App {
@@ -67,6 +115,22 @@ impl App {
             addons: addons_with_state,
             client,
             game_available,
+            last_nsqc_check: Instant::now() - Duration::from_secs(30),
+            nsqc_check_interval: Duration::from_secs(30),
+        }
+    }
+
+    fn check_nsqc_update(&mut self) {
+        if let Some((addon, state)) = self.addons.iter_mut().find(|(a, _)| a.name == "NSQC") {
+            let mut state = state.lock().unwrap();
+            if state.installing {
+                return;
+            }
+
+            match crate::modules::addon_manager::check_nsqc_update(&self.client) {
+                Ok(needs_update) => state.needs_update = needs_update,
+                Err(e) => error!("NSQC version check failed: {}", e),
+            }
         }
     }
 
@@ -90,6 +154,15 @@ impl App {
                 crate::modules::addon_manager::uninstall_addon(&addon)
             };
 
+            // Проверка обновления после операции
+            if addon.name == "NSQC" {
+                if let Ok(needs_update) = crate::modules::addon_manager::check_nsqc_update(&client)
+                {
+                    let mut state = state.lock().unwrap();
+                    state.needs_update = needs_update;
+                }
+            }
+
             let mut state = state.lock().unwrap();
             state.installing = false;
             state.target_state = Some(crate::modules::addon_manager::check_addon_installed(&addon));
@@ -103,6 +176,12 @@ impl App {
 
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Периодическая проверка обновлений
+        if self.last_nsqc_check.elapsed() >= self.nsqc_check_interval {
+            self.check_nsqc_update();
+            self.last_nsqc_check = Instant::now();
+        }
+
         CentralPanel::default().show(ctx, |ui| {
             egui::TopBottomPanel::top("top_panel").show_inside(ui, |ui| {
                 ui.vertical_centered(|ui| {
