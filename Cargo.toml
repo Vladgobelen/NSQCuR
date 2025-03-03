@@ -12,12 +12,11 @@ futures = "0.3"
 image = "0.25"
 indexmap = { version = "2.7.1", features = ["serde"] }
 log = "0.4"
-reqwest = { version = "0.12.12", features = ["json", "stream", "tokio-rustls"] }
-serde = { version = "1.0", features = ["derive"] }
+reqwest = { version = "0.12.12", features = ["json", "stream", "rustls-tls"] }
+tokio = { version = "1.0", features = ["full"] }
 serde_json = "1.0"
 simplelog = "0.12.1"
 tempfile = "3.5"
-tokio = { version = "1.0", features = ["full"] }
 zip-extensions = "0.8.1"
 
 [target.'cfg(windows)'.dependencies]
