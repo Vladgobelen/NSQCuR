@@ -101,7 +101,7 @@ fn download_file(
         let result = client
             .get(url)
             .set("User-Agent", "NightWatchUpdater/1.0")
-            .timeout(Duration::from_secs(300))
+            .timeout(Duration::from_secs(600))
             .call();
 
         match result {
@@ -187,21 +187,41 @@ pub fn uninstall_addon(addon: &Addon) -> Result<bool> {
     let main_path = base_dir.join(&addon.target_path).join(&addon.name);
     let mut success = true;
 
+    // Удаление основного файла/директории
     if main_path.exists() {
-        info!("Deleting main directory: {}", main_path.display());
-        if let Err(e) = fs::remove_dir_all(&main_path) {
-            error!("Deletion error: {}", e);
-            success = false;
+        if main_path.is_dir() {
+            info!("Deleting main directory: {}", main_path.display());
+            if let Err(e) = fs::remove_dir_all(&main_path) {
+                error!("Directory deletion error: {}", e);
+                success = false;
+            }
+        } else if main_path.is_file() {
+            info!("Deleting main file: {}", main_path.display());
+            if let Err(e) = fs::remove_file(&main_path) {
+                error!("File deletion error: {}", e);
+                success = false;
+            }
         }
     }
 
+    // Удаление компонентов в целевой директории
     let install_base = base_dir.join(&addon.target_path);
     if let Ok(entries) = fs::read_dir(install_base) {
         for entry in entries.filter_map(|e| e.ok()) {
+            let path = entry.path();
             let name = entry.file_name().to_string_lossy().into_owned();
+
             if name.contains(&addon.name) {
                 info!("Deleting component: {}", name);
-                if let Err(e) = fs::remove_dir_all(entry.path()) {
+                let result = if path.is_dir() {
+                    fs::remove_dir_all(&path)
+                } else if path.is_file() {
+                    fs::remove_file(&path)
+                } else {
+                    continue;
+                };
+
+                if let Err(e) = result {
                     error!("Component deletion error: {} - {}", name, e);
                     success = false;
                 }
