@@ -101,7 +101,7 @@ fn download_file(
         let result = client
             .get(url)
             .set("User-Agent", "NightWatchUpdater/1.0")
-            .timeout_connect(30_000)
+            .timeout(std::time::Duration::from_secs(30))
             .call();
 
         match result {
