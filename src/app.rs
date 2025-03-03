@@ -31,7 +31,7 @@ pub struct App {
     pub game_available: bool,
     last_nsqc_check: Instant,
     nsqc_check_interval: Duration,
-    initial_size_set: bool, // Новое поле для контроля размера
+    initial_size_set: bool,
 }
 
 impl App {
@@ -75,7 +75,7 @@ impl App {
             game_available,
             last_nsqc_check: Instant::now() - Duration::from_secs(30),
             nsqc_check_interval: Duration::from_secs(30),
-            initial_size_set: false, // Инициализация флага
+            initial_size_set: false,
         }
     }
 
@@ -133,15 +133,13 @@ impl App {
 
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // Фиксация размера при первом запуске
         if !self.initial_size_set {
-            ctx.send_viewport_command(egui::ViewportCommand::InnerSize(egui::Vec2::new(
+            ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::Vec2::new(
                 800.0, 600.0,
             )));
             self.initial_size_set = true;
         }
 
-        // Проверка обновлений NSQC
         if self.last_nsqc_check.elapsed() >= self.nsqc_check_interval {
             self.check_nsqc_update();
             self.last_nsqc_check = Instant::now();

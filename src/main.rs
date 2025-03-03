@@ -18,9 +18,7 @@ fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
             .with_inner_size([400.0, 600.0]) // Фиксированный стартовый размер
-            .with_min_inner_size([400.0, 600.0]) // Минимальные размеры
-            .with_dpi_scale(1.0) // Отключение авто-скейлинга
-            .with_icon(load_icon().expect("Failed to load icon")),
+            .with_min_inner_size([400.0, 600.0]), // Минимальные размеры
         ..Default::default()
     };
 
