@@ -97,11 +97,11 @@ fn download_file(
     let max_attempts = 3;
     let mut total_size = 0;
 
-    let mut response = loop {
+    let response = loop {
         let result = client
             .get(url)
             .set("User-Agent", "NightWatchUpdater/1.0")
-            .timeout(std::time::Duration::from_secs(30))
+            .timeout(Duration::from_secs(30))
             .call();
 
         match result {
@@ -123,12 +123,13 @@ fn download_file(
         }
     };
 
+    let mut reader = response.into_reader();
     let mut file = File::create(path).context("🔴 Failed to create temp file")?;
     let mut downloaded: u64 = 0;
     let mut buffer = [0u8; 8192];
 
     loop {
-        let bytes_read = response.read(&mut buffer)?;
+        let bytes_read = reader.read(&mut buffer)?;
         if bytes_read == 0 {
             break;
         }
