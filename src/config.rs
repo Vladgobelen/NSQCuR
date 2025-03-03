@@ -1,9 +1,9 @@
 use crate::app::Addon;
 use anyhow::Result;
 use indexmap::IndexMap;
-use reqwest::blocking::Client;
 use serde::{de, Deserialize};
 use std::path::PathBuf;
+use ureq::Agent;
 
 #[derive(Deserialize)]
 struct AddonConfig {
@@ -21,17 +21,21 @@ where
     Ok(path.replace("/", std::path::MAIN_SEPARATOR.to_string().as_str()))
 }
 
-pub fn load_addons_config_blocking(client: &Client) -> Result<IndexMap<String, Addon>> {
+pub fn load_addons_config_blocking(client: &Agent) -> Result<IndexMap<String, Addon>> {
     let response = client
         .get("https://raw.githubusercontent.com/Vladgobelen/NSQCu/refs/heads/main/addons.json")
-        .header("User-Agent", "NightWatchUpdater/1.0")
-        .send()?;
+        .set("User-Agent", "NightWatchUpdater/1.0")
+        .call()?;
 
-    if !response.status().is_success() {
-        return Err(anyhow::anyhow!("HTTP Error: {}", response.status()));
+    if response.status() != 200 {
+        return Err(anyhow::anyhow!(
+            "HTTP Error: {} - {}",
+            response.status(),
+            response.into_string()?
+        ));
     }
 
-    let text = response.text()?;
+    let text = response.into_string()?;
 
     #[derive(Deserialize)]
     struct Config {

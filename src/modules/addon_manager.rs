@@ -3,7 +3,6 @@ use crate::config;
 use anyhow::{Context, Result};
 use fs_extra::dir::CopyOptions as DirCopyOptions;
 use log::{error, info, warn};
-use reqwest::blocking::Client;
 use std::{
     fs,
     fs::File,
@@ -13,6 +12,7 @@ use std::{
     time::Duration,
 };
 use tempfile::tempdir;
+use ureq::Agent;
 use zip_extensions::zip_extract;
 
 pub fn check_addon_installed(addon: &Addon) -> bool {
@@ -28,11 +28,7 @@ pub fn check_addon_installed(addon: &Addon) -> bool {
     })
 }
 
-pub fn install_addon(
-    client: &Client,
-    addon: &Addon,
-    state: Arc<Mutex<AddonState>>,
-) -> Result<bool> {
+pub fn install_addon(client: &Agent, addon: &Addon, state: Arc<Mutex<AddonState>>) -> Result<bool> {
     if addon.link.ends_with(".zip") {
         handle_zip_install(client, addon, state)
     } else {
@@ -41,7 +37,7 @@ pub fn install_addon(
 }
 
 fn handle_zip_install(
-    client: &Client,
+    client: &Agent,
     addon: &Addon,
     state: Arc<Mutex<AddonState>>,
 ) -> Result<bool> {
@@ -90,7 +86,7 @@ fn handle_zip_install(
 }
 
 fn download_file(
-    client: &Client,
+    client: &Agent,
     url: &str,
     path: &Path,
     state: Arc<Mutex<AddonState>>,
@@ -99,41 +95,33 @@ fn download_file(
 
     let mut attempts = 0;
     let max_attempts = 3;
-    let mut response;
-    let total_size;
+    let mut total_size = 0;
 
-    loop {
+    let mut response = loop {
         let result = client
             .get(url)
-            .header("User-Agent", "NightWatchUpdater/1.0")
-            .timeout(Duration::from_secs(300))
-            .send();
+            .set("User-Agent", "NightWatchUpdater/1.0")
+            .timeout_connect(30_000)
+            .call();
 
         match result {
-            Ok(res) if res.status().is_success() => {
-                total_size = res.content_length().unwrap_or(1);
-                response = res;
-                break;
-            }
             Ok(res) => {
-                let status = res.status();
-                let body = res.text().unwrap_or_default();
-                error!("HTTP Error {}: {}", status, body);
-                if attempts >= max_attempts {
-                    return Err(anyhow::anyhow!("HTTP Error {}: {}", status, body));
-                }
+                total_size = res
+                    .header("Content-Length")
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(0);
+                break res;
             }
             Err(e) => {
                 error!("Network error (attempt {}): {}", attempts + 1, e);
                 if attempts >= max_attempts {
                     return Err(e.into());
                 }
+                attempts += 1;
+                std::thread::sleep(Duration::from_secs(5));
             }
         }
-
-        attempts += 1;
-        std::thread::sleep(Duration::from_secs(5));
-    }
+    };
 
     let mut file = File::create(path).context("🔴 Failed to create temp file")?;
     let mut downloaded: u64 = 0;
@@ -149,12 +137,11 @@ fn download_file(
         state.lock().unwrap().progress = downloaded as f32 / total_size as f32;
     }
 
-    let downloaded_size = fs::metadata(path)?.len();
-    if downloaded_size != total_size {
+    if total_size > 0 && downloaded != total_size {
         return Err(anyhow::anyhow!(
             "📭 File corrupted: expected {} bytes, got {}",
             total_size,
-            downloaded_size
+            downloaded
         ));
     }
 
@@ -162,7 +149,7 @@ fn download_file(
     info!(
         "✅ Downloaded: {} ({:.2} MB)",
         url,
-        downloaded_size as f64 / 1024.0 / 1024.0
+        downloaded as f64 / 1024.0 / 1024.0
     );
     Ok(())
 }
@@ -249,7 +236,7 @@ pub fn uninstall_addon(addon: &Addon) -> Result<bool> {
 }
 
 fn handle_file_install(
-    client: &Client,
+    client: &Agent,
     addon: &Addon,
     state: Arc<Mutex<AddonState>>,
 ) -> Result<bool> {

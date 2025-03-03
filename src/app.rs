@@ -1,8 +1,8 @@
 use eframe::egui::{self, CentralPanel, ProgressBar, ScrollArea};
 use log::error;
-use reqwest::blocking::Client;
 use serde::Deserialize;
 use std::sync::{Arc, Mutex};
+use ureq::Agent;
 
 #[derive(Clone, Deserialize)]
 pub struct Addon {
@@ -21,7 +21,7 @@ pub struct AddonState {
 
 pub struct App {
     pub addons: Vec<(Addon, Arc<Mutex<AddonState>>)>,
-    pub client: Client,
+    pub client: Agent,
 }
 
 impl App {
@@ -29,10 +29,9 @@ impl App {
         cc.egui_ctx.set_visuals(egui::Visuals::dark());
         crate::config::check_game_directory().unwrap_or_else(|e| panic!("{}", e));
 
-        let client = Client::builder()
-            .user_agent("NightWatchUpdater/1.0")
-            .build()
-            .expect("Failed to create HTTP client");
+        let client = ureq::AgentBuilder::new()
+            .timeout_connect(std::time::Duration::from_secs(30))
+            .build();
 
         let addons = crate::config::load_addons_config_blocking(&client)
             .expect("Failed to load addons config");
