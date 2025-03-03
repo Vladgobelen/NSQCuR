@@ -1,7 +1,5 @@
-use crate::{
-    app::{Addon, AddonState},
-    config,
-};
+use crate::app::{Addon, AddonState};
+use crate::config;
 use anyhow::{Context, Result};
 use fs_extra::dir::CopyOptions as DirCopyOptions;
 use log::{error, info, warn};
@@ -57,7 +55,6 @@ fn handle_zip_install(
 
     download_file(client, &addon.link, &download_path, state.clone())?;
 
-    // Проверка размера файла
     let file_size = fs::metadata(&download_path)
         .context("🔴 Failed to get file metadata")?
         .len();
@@ -65,7 +62,6 @@ fn handle_zip_install(
         return Err(anyhow::anyhow!("📭 Empty ZIP file downloaded"));
     }
 
-    // Проверка сигнатуры ZIP
     let mut file = File::open(&download_path).context("❌ Failed to open ZIP file")?;
     let mut header = [0u8; 4];
     file.read_exact(&mut header)?;

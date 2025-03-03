@@ -3,23 +3,14 @@ use anyhow::Result;
 use indexmap::IndexMap;
 use log::{error, info};
 use reqwest::blocking::Client;
-use serde::{de, Deserialize};
+use serde::Deserialize;
 use std::path::PathBuf;
 
 #[derive(Deserialize)]
 struct AddonConfig {
     link: String,
     description: String,
-    #[serde(deserialize_with = "normalize_path")]
     target_path: String,
-}
-
-fn normalize_path<'de, D>(deserializer: D) -> Result<String, D::Error>
-where
-    D: de::Deserializer<'de>,
-{
-    let path = String::deserialize(deserializer)?;
-    Ok(path.replace("/", std::path::MAIN_SEPARATOR.to_string().as_str()))
 }
 
 pub fn load_addons_config_blocking(client: &Client) -> Result<IndexMap<String, Addon>> {
@@ -66,7 +57,7 @@ pub fn load_addons_config_blocking(client: &Client) -> Result<IndexMap<String, A
 }
 
 pub fn check_game_directory() -> Result<()> {
-    info!("Directory structure check skipped (dynamic handling)");
+    info!("Directory check skipped (dynamic handling)");
     Ok(())
 }
 
