@@ -50,12 +50,11 @@ pub fn check_nsqc_update(client: &Agent) -> Result<bool> {
 
 pub fn install_addon(client: &Agent, addon: &Addon, state: Arc<Mutex<AddonState>>) -> Result<bool> {
     let success = if addon.link.ends_with(".zip") {
-        handle_zip_install(client, addon, state)?
+        handle_zip_install(client, addon, &state)?
     } else {
-        handle_file_install(client, addon, state)?
+        handle_file_install(client, addon, &state)?
     };
 
-    // Проверка обновления после установки NSQC
     if addon.name == "NSQC" && success {
         if let Ok(needs_update) = check_nsqc_update(client) {
             let mut state = state.lock().unwrap();
@@ -69,7 +68,7 @@ pub fn install_addon(client: &Agent, addon: &Addon, state: Arc<Mutex<AddonState>
 fn handle_zip_install(
     client: &Agent,
     addon: &Addon,
-    state: Arc<Mutex<AddonState>>,
+    state: &Arc<Mutex<AddonState>>,
 ) -> Result<bool> {
     info!("🚀 Starting ZIP install: {}", addon.name);
     let temp_dir = tempdir().context("🔴 Failed to create temp dir")?;
@@ -258,12 +257,12 @@ pub fn uninstall_addon(addon: &Addon) -> Result<bool> {
 fn handle_file_install(
     client: &Agent,
     addon: &Addon,
-    state: Arc<Mutex<AddonState>>,
+    state: &Arc<Mutex<AddonState>>,
 ) -> Result<bool> {
     info!("Installing file: {}", addon.name);
     let temp_dir = tempdir()?;
     let download_path = temp_dir.path().join(&addon.name);
-    download_file(client, &addon.link, &download_path, state)?;
+    download_file(client, &addon.link, &download_path, state.clone())?;
 
     let base_dir = config::base_dir();
     let install_path = base_dir.join(&addon.target_path).join(&addon.name);

@@ -1,55 +1,13 @@
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-
-mod app;
-mod config;
-mod modules;
-
-use app::App;
-use egui::IconData;
-use std::time::{Duration, Instant};
-
-fn main() -> eframe::Result<()> {
-    simplelog::CombinedLogger::init(vec![simplelog::WriteLogger::new(
-        simplelog::LevelFilter::Info,
-        simplelog::Config::default(),
-        std::fs::File::create("updater.log").unwrap(),
-    )])
-    .unwrap();
-
-    let options = eframe::NativeOptions {
-        viewport: eframe::egui::ViewportBuilder::default()
-            .with_inner_size([400.0, 600.0])
-            .with_icon(load_icon().expect("Failed to load icon")),
-        ..Default::default()
-    };
-
-    eframe::run_native(
-        "Night Watch Updater",
-        options,
-        Box::new(|cc| Ok(Box::new(App::new(cc)))),
-    )
-}
-
-fn load_icon() -> Option<IconData> {
-    let icon_bytes = include_bytes!("../resources/emblem.ico");
-    let image = image::load_from_memory(icon_bytes).ok()?.to_rgba8();
-    let (width, height) = (image.width(), image.height());
-    let rgba = image.into_raw();
-
-    Some(IconData {
-        rgba,
-        width,
-        height,
-    })
-}
-
-// Основная реализация приложения
 use eframe::egui::{self, CentralPanel, ProgressBar, ScrollArea};
 use log::{error, info};
 use serde::Deserialize;
 use std::process::Command;
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 use ureq::Agent;
+
+use crate::config;
+use crate::modules::addon_manager;
 
 #[derive(Clone, Deserialize)]
 pub struct Addon {
@@ -79,24 +37,23 @@ impl App {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         cc.egui_ctx.set_visuals(egui::Visuals::dark());
 
-        let game_available = crate::config::check_game_directory().is_ok();
+        let game_available = config::check_game_directory().is_ok();
 
         let client = ureq::AgentBuilder::new()
             .timeout_connect(std::time::Duration::from_secs(30))
             .build();
 
-        let addons = crate::config::load_addons_config_blocking(&client)
-            .expect("Failed to load addons config");
+        let addons =
+            config::load_addons_config_blocking(&client).expect("Failed to load addons config");
 
         let addons_with_state = addons
             .into_iter()
             .map(|(_, addon)| {
-                let installed = crate::modules::addon_manager::check_addon_installed(&addon);
+                let installed = addon_manager::check_addon_installed(&addon);
                 let mut needs_update = false;
 
                 if addon.name == "NSQC" && installed {
-                    needs_update =
-                        crate::modules::addon_manager::check_nsqc_update(&client).unwrap_or(false);
+                    needs_update = addon_manager::check_nsqc_update(&client).unwrap_or(false);
                 }
 
                 (
@@ -121,13 +78,13 @@ impl App {
     }
 
     fn check_nsqc_update(&mut self) {
-        if let Some((addon, state)) = self.addons.iter_mut().find(|(a, _)| a.name == "NSQC") {
+        if let Some((_addon, state)) = self.addons.iter_mut().find(|(a, _)| a.name == "NSQC") {
             let mut state = state.lock().unwrap();
             if state.installing {
                 return;
             }
 
-            match crate::modules::addon_manager::check_nsqc_update(&self.client) {
+            match addon_manager::check_nsqc_update(&self.client) {
                 Ok(needs_update) => state.needs_update = needs_update,
                 Err(e) => error!("NSQC version check failed: {}", e),
             }
@@ -140,7 +97,7 @@ impl App {
 
         std::thread::spawn(move || {
             let mut state_lock = state.lock().unwrap();
-            let current_state = crate::modules::addon_manager::check_addon_installed(&addon);
+            let current_state = addon_manager::check_addon_installed(&addon);
             let desired_state = !current_state;
 
             state_lock.installing = true;
@@ -149,15 +106,13 @@ impl App {
             drop(state_lock);
 
             let result = if desired_state {
-                crate::modules::addon_manager::install_addon(&client, &addon, state.clone())
+                addon_manager::install_addon(&client, &addon, state.clone())
             } else {
-                crate::modules::addon_manager::uninstall_addon(&addon)
+                addon_manager::uninstall_addon(&addon)
             };
 
-            // Проверка обновления после операции
             if addon.name == "NSQC" {
-                if let Ok(needs_update) = crate::modules::addon_manager::check_nsqc_update(&client)
-                {
+                if let Ok(needs_update) = addon_manager::check_nsqc_update(&client) {
                     let mut state = state.lock().unwrap();
                     state.needs_update = needs_update;
                 }
@@ -165,7 +120,7 @@ impl App {
 
             let mut state = state.lock().unwrap();
             state.installing = false;
-            state.target_state = Some(crate::modules::addon_manager::check_addon_installed(&addon));
+            state.target_state = Some(addon_manager::check_addon_installed(&addon));
 
             if let Err(e) = result {
                 error!("Operation failed: {} - {:?}", addon.name, e);
@@ -176,7 +131,6 @@ impl App {
 
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // Периодическая проверка обновлений
         if self.last_nsqc_check.elapsed() >= self.nsqc_check_interval {
             self.check_nsqc_update();
             self.last_nsqc_check = Instant::now();
@@ -250,14 +204,12 @@ impl eframe::App for App {
 }
 
 fn launch_game() -> Result<(), std::io::Error> {
-    let exe_path = crate::config::get_wow_path();
+    let exe_path = config::get_wow_path();
 
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;
-        Command::new(exe_path)
-            .creation_flags(0x08000000) // CREATE_NO_WINDOW
-            .spawn()?;
+        Command::new(exe_path).creation_flags(0x08000000).spawn()?;
     }
 
     #[cfg(not(target_os = "windows"))]
