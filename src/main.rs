@@ -7,7 +7,7 @@ mod modules;
 use app::App;
 use eframe::egui;
 use egui::{IconData, ViewportBuilder};
-use simplelog::{CombinedLogger, LevelFilter, WriteLogger}; // Убрали Config
+use simplelog::{CombinedLogger, LevelFilter, WriteLogger};
 
 fn main() -> Result<(), eframe::Error> {
     CombinedLogger::init(vec![WriteLogger::new(
@@ -35,7 +35,6 @@ fn load_icon() -> Option<IconData> {
     let icon_bytes = include_bytes!("../resources/emblem.ico");
     let image = image::load_from_memory(icon_bytes).ok()?.to_rgba8();
 
-    // Сначала получаем размеры до перемещения
     let width = image.width();
     let height = image.height();
     let rgba = image.into_raw();
