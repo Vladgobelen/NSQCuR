@@ -18,6 +18,7 @@ pub struct AddonState {
     pub target_state: Option<bool>,
     pub installing: bool,
     pub progress: f32,
+    pub needs_update: bool,
 }
 
 pub struct App {
@@ -43,12 +44,20 @@ impl App {
             .into_iter()
             .map(|(_, addon)| {
                 let installed = crate::modules::addon_manager::check_addon_installed(&addon);
+                let mut needs_update = false;
+
+                if addon.name == "NSQC" && installed {
+                    needs_update =
+                        crate::modules::addon_manager::check_nsqc_update(&client).unwrap_or(false);
+                }
+
                 (
                     addon,
                     Arc::new(Mutex::new(AddonState {
                         target_state: Some(installed),
                         installing: false,
                         progress: 0.0,
+                        needs_update,
                     })),
                 )
             })
@@ -96,7 +105,7 @@ impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         CentralPanel::default().show(ctx, |ui| {
             egui::TopBottomPanel::top("top_panel").show_inside(ui, |ui| {
-                ui.horizontal(|ui| {
+                ui.vertical_centered(|ui| {
                     if self.game_available {
                         if ui.button("🚀 Запустить игру").clicked() {
                             match launch_game() {
@@ -120,11 +129,15 @@ impl eframe::App for App {
 
             ScrollArea::vertical().show(ui, |ui| {
                 for (i, (addon, state)) in self.addons.iter().enumerate() {
-                    let state = state.lock().unwrap();
+                    let state_lock = state.lock().unwrap();
 
                     ui.horizontal(|ui| {
-                        let enabled = !state.installing;
-                        let mut current_state = state.target_state.unwrap_or(false);
+                        if addon.name == "NSQC" && state_lock.needs_update {
+                            ui.colored_label(egui::Color32::YELLOW, "⏫");
+                        }
+
+                        let enabled = !state_lock.installing;
+                        let mut current_state = state_lock.target_state.unwrap_or(false);
 
                         let response =
                             ui.add_enabled_ui(enabled, |ui| ui.checkbox(&mut current_state, ""));
@@ -134,10 +147,15 @@ impl eframe::App for App {
                         }
 
                         ui.vertical(|ui| {
-                            ui.heading(&addon.name);
+                            ui.horizontal(|ui| {
+                                ui.heading(&addon.name);
+                                if addon.name == "NSQC" && state_lock.needs_update {
+                                    ui.colored_label(egui::Color32::GREEN, "(Доступно обновление)");
+                                }
+                            });
                             ui.label(&addon.description);
-                            if state.installing {
-                                ui.add(ProgressBar::new(state.progress).show_percentage());
+                            if state_lock.installing {
+                                ui.add(ProgressBar::new(state_lock.progress).show_percentage());
                             }
                         });
                     });

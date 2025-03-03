@@ -44,21 +44,7 @@ pub fn load_addons_config_blocking(client: &Agent) -> Result<IndexMap<String, Ad
 
     let config: Config = serde_json::from_str(&text)?;
 
-    Ok(config
-        .addons
-        .into_iter()
-        .map(|(name, cfg)| {
-            (
-                name.clone(),
-                Addon {
-                    name,
-                    link: cfg.link,
-                    description: cfg.description,
-                    target_path: cfg.target_path,
-                },
-            )
-        })
-        .collect())
+    Ok(config.addons)
 }
 
 pub fn check_game_directory() -> Result<()> {

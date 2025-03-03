@@ -28,6 +28,26 @@ pub fn check_addon_installed(addon: &Addon) -> bool {
     })
 }
 
+pub fn check_nsqc_update(client: &Agent) -> Result<bool> {
+    let remote_version = client
+        .get("https://github.com/Vladgobelen/NSQC/blob/main/vers")
+        .call()?
+        .into_string()?;
+
+    let local_path = config::base_dir()
+        .join("Interface")
+        .join("AddOns")
+        .join("NSQC")
+        .join("vers");
+
+    if !local_path.exists() {
+        return Ok(true);
+    }
+
+    let local_version = fs::read_to_string(local_path)?;
+    Ok(remote_version.trim() != local_version.trim())
+}
+
 pub fn install_addon(client: &Agent, addon: &Addon, state: Arc<Mutex<AddonState>>) -> Result<bool> {
     if addon.link.ends_with(".zip") {
         handle_zip_install(client, addon, state)
@@ -95,7 +115,7 @@ fn download_file(
 
     let mut attempts = 0;
     let max_attempts = 3;
-    let total_size; // Исправлено: убрано начальное значение
+    let total_size;
 
     let response = loop {
         let result = client
@@ -157,13 +177,9 @@ fn download_file(
 
 fn copy_all_contents(source: &Path, dest: &Path) -> Result<()> {
     info!("📁 Copying: [{}] -> [{}]", source.display(), dest.display());
-
-    // Создаем целевую директорию, если её нет
     fs::create_dir_all(dest)?;
 
-    let options = DirCopyOptions::new()
-        .overwrite(true) // Перезаписываем существующие файлы
-        .content_only(true); // Копируем только содержимое директории
+    let options = DirCopyOptions::new().overwrite(true).content_only(true);
 
     for entry in fs::read_dir(source)? {
         let entry = entry?;
@@ -187,7 +203,6 @@ pub fn uninstall_addon(addon: &Addon) -> Result<bool> {
     let main_path = base_dir.join(&addon.target_path).join(&addon.name);
     let mut success = true;
 
-    // Удаление основного файла/директории
     if main_path.exists() {
         if main_path.is_dir() {
             info!("Deleting main directory: {}", main_path.display());
@@ -204,7 +219,6 @@ pub fn uninstall_addon(addon: &Addon) -> Result<bool> {
         }
     }
 
-    // Удаление компонентов в целевой директории
     let install_base = base_dir.join(&addon.target_path);
     if let Ok(entries) = fs::read_dir(install_base) {
         for entry in entries.filter_map(|e| e.ok()) {
