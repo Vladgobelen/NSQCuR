@@ -141,7 +141,7 @@ fn download_file(
 ) -> Result<()> {
     info!("⏬ Downloading: {}", url);
 
-    let response = client
+    let mut response = client
         .get(url)
         .header("User-Agent", "NightWatchUpdater/1.0")
         .send()
@@ -175,16 +175,15 @@ fn download_file(
     info!("📁 Temp file: {}", path.display());
 
     let mut downloaded = 0;
-    let mut stream = response.bytes().map(|b| b.unwrap());
+    let mut buffer = [0u8; 8192];
 
-    let mut buf = [0u8; 8192];
-    while let Ok(n) = stream.read(&mut buf) {
-        if n == 0 {
+    loop {
+        let bytes_read = response.read(&mut buffer)?;
+        if bytes_read == 0 {
             break;
         }
-        file.write_all(&buf[..n])
-            .context("🔴 Failed to write to file")?;
-        downloaded += n as u64;
+        file.write_all(&buffer[..bytes_read])?;
+        downloaded += bytes_read as u64;
         state.lock().unwrap().progress = downloaded as f32 / total_size as f32;
     }
 
