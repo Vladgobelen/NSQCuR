@@ -99,7 +99,7 @@ impl eframe::App for App {
 
             ScrollArea::vertical().show(ui, |ui| {
                 for (i, (addon, state)) in self.addons.iter().enumerate() {
-                    let mut state = state.lock().unwrap();
+                    let state = state.lock().unwrap();
 
                     ui.horizontal(|ui| {
                         let enabled = !state.installing;

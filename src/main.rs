@@ -5,7 +5,7 @@ mod config;
 mod modules;
 
 use app::App;
-use eframe::IconData;
+use egui::IconData;
 
 fn main() -> eframe::Result<()> {
     simplelog::CombinedLogger::init(vec![simplelog::WriteLogger::new(
