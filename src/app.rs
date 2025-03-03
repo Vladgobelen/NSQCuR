@@ -1,6 +1,6 @@
 use crate::{config, modules::addon_manager};
 use egui::{CentralPanel, ProgressBar, ScrollArea};
-use log::{debug, error, info, warn};
+use log::{error, info};
 use reqwest::blocking::Client;
 use serde::Deserialize;
 use std::sync::{Arc, Mutex};
@@ -27,30 +27,25 @@ pub struct App {
 
 impl App {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        info!("Initializing application");
         cc.egui_ctx.set_visuals(egui::Visuals::dark());
-
-        if let Err(e) = config::check_game_directory() {
-            error!("Game directory check failed: {}", e);
-            panic!("{}", e);
-        }
+        config::check_game_directory().unwrap_or_else(|e| panic!("{}", e));
 
         let client = Client::new();
-        info!("HTTP client created");
-
-        let addons = config::load_addons_config_blocking(&client)
-            .inspect_err(|e| error!("Failed to load addons config: {}", e))
-            .expect("Failed to load addons config");
-
-        info!("Loaded {} addons", addons.len());
+        let addons =
+            config::load_addons_config_blocking(&client).expect("Failed to load addons config");
 
         let addons_with_state = addons
             .into_iter()
             .map(|(_, addon)| {
                 let installed = addon_manager::check_addon_installed(&addon);
-                debug!(
-                    "Addon: {}, installed: {}, path: {}",
-                    addon.name, installed, addon.target_path
+                info!(
+                    "Addon '{}' initial status: {}",
+                    addon.name,
+                    if installed {
+                        "installed"
+                    } else {
+                        "not installed"
+                    }
                 );
                 (
                     addon,
@@ -71,11 +66,9 @@ impl App {
 
     fn toggle_addon(&mut self, index: usize) {
         let (addon, state) = self.addons[index].clone();
-        info!("User toggled addon: {}", addon.name);
         let mut state_lock = state.lock().unwrap();
 
         if state_lock.installing {
-            warn!("Addon {} is already being processed", addon.name);
             return;
         }
 
@@ -83,8 +76,13 @@ impl App {
         let desired_state = !current_state;
 
         info!(
-            "Current state: {}, desired state: {}",
-            current_state, desired_state
+            "Toggling addon '{}' to {}",
+            addon.name,
+            if desired_state {
+                "install"
+            } else {
+                "uninstall"
+            }
         );
 
         state_lock.target_state = Some(desired_state);
@@ -94,19 +92,11 @@ impl App {
 
         let client = self.client.clone();
         std::thread::spawn(move || {
-            info!(
-                "Starting {} operation for {}",
-                if desired_state {
-                    "install"
-                } else {
-                    "uninstall"
-                },
-                addon.name
-            );
-
             let result = if desired_state {
+                info!("Starting installation of {}", addon.name);
                 addon_manager::install_addon(&client, &addon, state.clone())
             } else {
+                info!("Starting uninstallation of {}", addon.name);
                 addon_manager::uninstall_addon(&addon)
             };
 
@@ -114,14 +104,20 @@ impl App {
             state.installing = false;
 
             let actual_state = addon_manager::check_addon_installed(&addon);
-            info!(
-                "Operation completed for {}. Actual state: {}",
-                addon.name, actual_state
-            );
             state.target_state = Some(actual_state);
 
             if let Err(e) = result {
-                error!("Operation failed for {}: {}", addon.name, e);
+                error!("Operation error on '{}': {:?}", addon.name, e);
+            } else {
+                info!(
+                    "Successfully {} addon '{}'",
+                    if desired_state {
+                        "installed"
+                    } else {
+                        "uninstalled"
+                    },
+                    addon.name
+                );
             }
         });
     }
@@ -141,12 +137,6 @@ impl eframe::App for App {
 
                     let actual_state = addon_manager::check_addon_installed(addon);
                     if state_lock.target_state != Some(actual_state) {
-                        debug!(
-                            "State mismatch for {}. Updating from {} to {}",
-                            addon.name,
-                            state_lock.target_state.unwrap_or(false),
-                            actual_state
-                        );
                         state_lock.target_state = Some(actual_state);
                     }
 
@@ -158,7 +148,6 @@ impl eframe::App for App {
                             ui.add_enabled_ui(enabled, |ui| ui.checkbox(&mut current_state, ""));
 
                         if response.inner.changed() && enabled {
-                            info!("UI change detected for {}", addon.name);
                             indices_to_toggle.push(i);
                         }
 
