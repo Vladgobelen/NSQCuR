@@ -100,14 +100,13 @@ impl eframe::App for App {
             ScrollArea::vertical().show(ui, |ui| {
                 for (i, (addon, state)) in self.addons.iter().enumerate() {
                     let state = state.lock().unwrap();
-                    
+
                     ui.horizontal(|ui| {
                         let enabled = !state.installing;
                         let mut current_state = state.target_state.unwrap_or(false);
-                        
-                        let response = ui.add_enabled_ui(enabled, |ui| {
-                            ui.checkbox(&mut current_state, "")
-                        });
+
+                        let response =
+                            ui.add_enabled_ui(enabled, |ui| ui.checkbox(&mut current_state, ""));
 
                         if response.inner.changed() {
                             indices_to_toggle.push(i);

@@ -1,7 +1,7 @@
 use crate::app::Addon;
 use anyhow::Result;
 use indexmap::IndexMap;
-use serde::{Deserialize, de};
+use serde::{de, Deserialize};
 use std::path::PathBuf;
 use ureq::Agent;
 

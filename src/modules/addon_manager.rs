@@ -17,7 +17,9 @@ use zip_extensions::zip_extract;
 
 pub fn check_addon_installed(addon: &Addon) -> bool {
     if addon.is_zip {
-        let target_dir = config::base_dir().join(&addon.target_path).join(&addon.name);
+        let target_dir = config::base_dir()
+            .join(&addon.target_path)
+            .join(&addon.name);
         target_dir.exists()
     } else {
         let file_name = addon.link.split('/').last().unwrap_or(&addon.name);
@@ -26,11 +28,7 @@ pub fn check_addon_installed(addon: &Addon) -> bool {
     }
 }
 
-pub fn install_addon(
-    client: &Agent,
-    addon: &Addon,
-    state: Arc<Mutex<AddonState>>,
-) -> Result<bool> {
+pub fn install_addon(client: &Agent, addon: &Addon, state: Arc<Mutex<AddonState>>) -> Result<bool> {
     if addon.is_zip {
         handle_zip_install(client, addon, state)
     } else {
@@ -47,7 +45,7 @@ fn handle_zip_install(
 
     let temp_dir = tempdir().context("🔴 Failed to create temp dir")?;
     let download_path = temp_dir.path().join(format!("{}.zip", addon.name));
-    
+
     info!("📂 Temp dir: {}", temp_dir.path().display());
     info!("📥 ZIP path: {}", download_path.display());
 
@@ -102,9 +100,7 @@ fn handle_file_install(
         .trim()
         .to_string();
 
-    let target_path = config::base_dir()
-        .join(&addon.target_path)
-        .join(&file_name);
+    let target_path = config::base_dir().join(&addon.target_path).join(&file_name);
 
     fs::create_dir_all(target_path.parent().unwrap())?;
     download_file(client, &addon.link, &target_path, state)?;
@@ -175,7 +171,11 @@ fn download_file(
     }
 
     file.sync_all()?;
-    info!("✅ Downloaded: {} ({:.2} MB)", url, downloaded as f64 / 1024.0 / 1024.0);
+    info!(
+        "✅ Downloaded: {} ({:.2} MB)",
+        url,
+        downloaded as f64 / 1024.0 / 1024.0
+    );
     Ok(())
 }
 
