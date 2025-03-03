@@ -33,18 +33,17 @@ fn main() -> eframe::Result<()> {
 #[allow(dead_code)]
 fn load_icon() -> Option<IconData> {
     let icon_bytes = include_bytes!("../resources/emblem.ico");
-    let image = match image::load_from_memory(icon_bytes) {
-        Ok(img) => img.to_rgba8(),
-        Err(e) => {
-            log::error!("Failed to load icon: {}", e);
-            return None;
-        }
-    };
+    let image = image::load_from_memory(icon_bytes).ok()?.to_rgba8();
 
-    log::info!("Icon dimensions: {}x{}", image.width(), image.height());
+    // Получаем размеры до перемещения
+    let (width, height) = (image.width(), image.height());
+
+    // Теперь перемещаем image
+    let rgba = image.into_raw();
+
     Some(IconData {
-        rgba: image.into_raw(),
-        width: image.width(),
-        height: image.height(),
+        rgba,
+        width,
+        height,
     })
 }
