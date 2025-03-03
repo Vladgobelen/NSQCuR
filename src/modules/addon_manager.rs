@@ -2,7 +2,7 @@ use crate::app::{Addon, AddonState};
 use crate::config;
 use anyhow::{Context, Result};
 use fs_extra::dir::CopyOptions;
-use log::{error, info};
+use log::{error, info, warn};
 use std::{
     fs,
     fs::File,
@@ -16,14 +16,22 @@ use ureq::Agent;
 use zip_extensions::zip_extract;
 
 pub fn check_addon_installed(addon: &Addon) -> bool {
+    let base_dir = config::base_dir();
+
     if addon.is_zip {
-        let target_dir = config::base_dir()
-            .join(&addon.target_path)
-            .join(&addon.name);
+        let target_dir = base_dir.join(&addon.target_path).join(&addon.name);
         target_dir.exists()
     } else {
-        let file_name = addon.link.split('/').last().unwrap_or(&addon.name);
-        let file_path = config::base_dir().join(&addon.target_path).join(file_name);
+        let file_name = addon
+            .link
+            .split('/')
+            .last()
+            .unwrap_or(&addon.name)
+            .split('?')
+            .next()
+            .unwrap_or(&addon.name);
+
+        let file_path = base_dir.join(&addon.target_path).join(file_name);
         file_path.exists()
     }
 }
@@ -97,12 +105,19 @@ fn handle_file_install(
         .split('/')
         .last()
         .unwrap_or(&addon.name)
+        .split('?')
+        .next()
+        .unwrap_or(&addon.name)
         .trim()
         .to_string();
 
+    info!("File name parsed: '{}'", file_name);
+
     let target_path = config::base_dir().join(&addon.target_path).join(&file_name);
 
-    fs::create_dir_all(target_path.parent().unwrap())?;
+    fs::create_dir_all(target_path.parent().unwrap())
+        .context("🔴 Failed to create target directory")?;
+
     download_file(client, &addon.link, &target_path, state)?;
 
     info!("✅ File installed: {}", target_path.display());
@@ -116,6 +131,10 @@ fn download_file(
     state: Arc<Mutex<AddonState>>,
 ) -> Result<()> {
     info!("⏬ Downloading: {}", url);
+
+    if !url.starts_with("https://") {
+        return Err(anyhow::anyhow!("Invalid URL protocol: {}", url));
+    }
 
     let mut attempts = 0;
     let max_attempts = 3;
@@ -208,33 +227,37 @@ pub fn uninstall_addon(addon: &Addon) -> Result<bool> {
 
     if addon.is_zip {
         let dir_path = base_dir.join(&addon.target_path).join(&addon.name);
+        info!("🗑 Attempting to delete directory: {}", dir_path.display());
         if dir_path.exists() {
-            info!("🗑 Deleting directory: {}", dir_path.display());
             if let Err(e) = fs::remove_dir_all(&dir_path) {
                 error!("Directory deletion error: {}", e);
                 success = false;
             }
+        } else {
+            warn!("Directory not found: {}", dir_path.display());
+            success = false;
         }
     } else {
-        let file_name = addon.link.split('/').last().unwrap_or(&addon.name);
+        let file_name = addon
+            .link
+            .split('/')
+            .last()
+            .unwrap_or(&addon.name)
+            .split('?')
+            .next()
+            .unwrap_or(&addon.name);
+
         let file_path = base_dir.join(&addon.target_path).join(file_name);
+        info!("🗑 Attempting to delete file: {}", file_path.display());
+
         if file_path.exists() {
-            info!("🗑 Deleting file: {}", file_path.display());
             if let Err(e) = fs::remove_file(&file_path) {
-                error!("File deletion error: {}", e);
+                error!("Deletion error: {}", e);
                 success = false;
             }
-        }
-    }
-
-    let install_base = base_dir.join(&addon.target_path);
-    if let Ok(entries) = fs::read_dir(install_base) {
-        for entry in entries.filter_map(|e| e.ok()) {
-            let name = entry.file_name().to_string_lossy().into_owned();
-            if name.contains(&addon.name) {
-                info!("🗑 Deleting residual item: {}", name);
-                let _ = fs::remove_dir_all(entry.path()).or_else(|_| fs::remove_file(entry.path()));
-            }
+        } else {
+            warn!("File not found: {}", file_path.display());
+            success = false;
         }
     }
 

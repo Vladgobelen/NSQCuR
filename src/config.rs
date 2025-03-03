@@ -1,6 +1,7 @@
 use crate::app::Addon;
 use anyhow::Result;
 use indexmap::IndexMap;
+use log::info;
 use serde::{de, Deserialize};
 use std::path::PathBuf;
 use ureq::Agent;
@@ -37,7 +38,7 @@ impl From<AddonConfig> for Addon {
 
 pub fn load_addons_config_blocking(client: &Agent) -> Result<IndexMap<String, Addon>> {
     let response = client
-        .get("https://raw.githubusercontent.com/Vladgobelen/NSQCu/refs/heads/main/addons.json")
+        .get("https://raw.githubusercontent.com/Vladgobelen/NSQCu/main/addons.json")
         .set("User-Agent", "NightWatchUpdater/1.0")
         .call()?;
 
@@ -70,5 +71,7 @@ pub fn check_game_directory() -> Result<()> {
 }
 
 pub fn base_dir() -> PathBuf {
-    std::env::current_dir().expect("Failed to get current directory")
+    let path = std::env::current_dir().expect("Failed to get current directory");
+    info!("Base directory: {}", path.display());
+    path
 }
