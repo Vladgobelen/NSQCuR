@@ -48,16 +48,28 @@ fn handle_zip_install(
 ) -> Result<bool> {
     info!("🚀 Starting ZIP install: {}", addon.name);
 
-    let temp_dir = tempdir()?;
+    let temp_dir = tempdir().context("🔴 Failed to create temp dir")?;
     let download_path = temp_dir.path().join(format!("{}.zip", addon.name));
+
+    info!("📂 Temp dir: {}", temp_dir.path().display());
+    info!("📥 ZIP path: {}", download_path.display());
+
     download_file(client, &addon.link, &download_path, state.clone())?;
+
+    // Проверка размера файла
+    let file_size = fs::metadata(&download_path)
+        .context("🔴 Failed to get file metadata")?
+        .len();
+    if file_size == 0 {
+        return Err(anyhow::anyhow!("📭 Empty ZIP file downloaded"));
+    }
 
     let file = File::open(&download_path).context("❌ Failed to open ZIP file")?;
     let mut archive = match ZipArchive::new(file) {
         Ok(ar) => ar,
         Err(e) => {
             error!("💀 Invalid ZIP archive: {}", e);
-            return Err(anyhow::anyhow!("Invalid ZIP archive"));
+            return Err(anyhow::anyhow!("Invalid ZIP archive: {}", e));
         }
     };
 
@@ -80,7 +92,6 @@ fn handle_zip_install(
         _ => (extract_dir.clone(), false),
     };
 
-    // ИСПРАВЛЕННЫЙ БЛОК: Пути через base_dir()
     let base_dir = config::base_dir();
     let target_dir = base_dir.join(&addon.target_path);
     let final_target = if should_create_subdir {
@@ -130,31 +141,61 @@ fn download_file(
 ) -> Result<()> {
     info!("⏬ Downloading: {}", url);
 
-    let mut response = client
+    let response = client
         .get(url)
         .header("User-Agent", "NightWatchUpdater/1.0")
-        .send()?;
+        .send()
+        .context("🚫 Failed to send request")?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().unwrap_or_default();
+        error!("HTTP Error {}: {}", status, body);
+        return Err(anyhow::anyhow!("HTTP Error {}: {}", status, body));
+    }
+
+    let content_type = response
+        .headers()
+        .get("content-type")
+        .and_then(|ct| ct.to_str().ok())
+        .unwrap_or("")
+        .to_lowercase();
+
+    if !content_type.contains("zip") && !content_type.contains("octet-stream") {
+        return Err(anyhow::anyhow!(
+            "⚠️ Invalid Content-Type: '{}' for {}",
+            content_type,
+            url
+        ));
+    }
 
     let total_size = response.content_length().unwrap_or(1);
-    let mut file = File::create(path)?;
+    let mut file = File::create(path).context("🔴 Failed to create temp file")?;
+
+    info!("📁 Temp file: {}", path.display());
 
     let mut downloaded = 0;
-    let mut buf = [0u8; 8192];
+    let mut stream = response.bytes().map(|b| b.unwrap());
 
-    while let Ok(bytes_read) = response.read(&mut buf) {
-        if bytes_read == 0 {
+    let mut buf = [0u8; 8192];
+    while let Ok(n) = stream.read(&mut buf) {
+        if n == 0 {
             break;
         }
-        file.write_all(&buf[..bytes_read])?;
-        downloaded += bytes_read as u64;
+        file.write_all(&buf[..n])
+            .context("🔴 Failed to write to file")?;
+        downloaded += n as u64;
         state.lock().unwrap().progress = downloaded as f32 / total_size as f32;
     }
 
+    file.sync_all().context("🔴 Failed to flush file")?;
+
     info!(
-        "📥 Downloaded: {} ({:.2} MB)",
+        "✅ Downloaded: {} ({:.2} MB)",
         url,
         downloaded as f64 / 1024.0 / 1024.0
     );
+
     Ok(())
 }
 
