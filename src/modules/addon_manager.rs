@@ -29,10 +29,11 @@ pub fn check_addon_installed(addon: &Addon) -> bool {
 }
 
 pub fn check_nsqc_update(client: &Agent) -> Result<bool> {
-    let remote_version = client
-        .get("https://github.com/Vladgobelen/NSQC/blob/main/vers")
-        .call()?
-        .into_string()?;
+    let response = client
+        .get("https://raw.githubusercontent.com/Vladgobelen/NSQC/main/vers")
+        .call()?;
+
+    let remote_version = response.into_string()?;
 
     let local_path = config::base_dir()
         .join("Interface")
