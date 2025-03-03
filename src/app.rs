@@ -1,5 +1,3 @@
-use crate::config;
-use crate::modules::addon_manager;
 use eframe::egui::{self, CentralPanel, ProgressBar, ScrollArea};
 use log::{error, info};
 use reqwest::blocking::Client;
@@ -29,22 +27,22 @@ pub struct App {
 impl App {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         cc.egui_ctx.set_visuals(egui::Visuals::dark());
-        config::check_game_directory().unwrap_or_else(|e| panic!("{}", e));
+        crate::config::check_game_directory().unwrap_or_else(|e| panic!("{}", e));
 
         let client = Client::builder()
             .user_agent("NightWatchUpdater/1.0")
             .danger_accept_invalid_certs(true)
-            .timeout(std::time::Duration::from_secs(60))
+            .timeout(std::time::Duration::from_secs(300))
             .build()
             .expect("Failed to create HTTP client");
 
-        let addons =
-            config::load_addons_config_blocking(&client).expect("Failed to load addons config");
+        let addons = crate::config::load_addons_config_blocking(&client)
+            .expect("Failed to load addons config");
 
         let addons_with_state = addons
             .into_iter()
             .map(|(_, addon)| {
-                let installed = addon_manager::check_addon_installed(&addon);
+                let installed = crate::modules::addon_manager::check_addon_installed(&addon);
                 (
                     addon,
                     Arc::new(Mutex::new(AddonState {
@@ -70,7 +68,7 @@ impl App {
             return;
         }
 
-        let current_state = addon_manager::check_addon_installed(&addon);
+        let current_state = crate::modules::addon_manager::check_addon_installed(&addon);
         let desired_state = !current_state;
 
         info!(
@@ -91,15 +89,15 @@ impl App {
         let client = self.client.clone();
         std::thread::spawn(move || {
             let result = if desired_state {
-                addon_manager::install_addon(&client, &addon, state.clone())
+                crate::modules::addon_manager::install_addon(&client, &addon, state.clone())
             } else {
-                addon_manager::uninstall_addon(&addon)
+                crate::modules::addon_manager::uninstall_addon(&addon)
             };
 
             let mut state = state.lock().unwrap();
             state.installing = false;
 
-            let actual_state = addon_manager::check_addon_installed(&addon);
+            let actual_state = crate::modules::addon_manager::check_addon_installed(&addon);
             state.target_state = Some(actual_state);
 
             if let Err(e) = result {
@@ -121,7 +119,7 @@ impl eframe::App for App {
                 for (i, (addon, state)) in self.addons.iter().enumerate() {
                     let mut state_lock = state.lock().unwrap();
 
-                    let actual_state = addon_manager::check_addon_installed(addon);
+                    let actual_state = crate::modules::addon_manager::check_addon_installed(addon);
                     if state_lock.target_state != Some(actual_state) {
                         state_lock.target_state = Some(actual_state);
                     }

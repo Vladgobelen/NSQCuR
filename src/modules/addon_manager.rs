@@ -3,7 +3,7 @@ use crate::config;
 use anyhow::{Context, Result};
 use fs_extra::dir::CopyOptions as DirCopyOptions;
 use log::{error, info, warn};
-use reqwest::blocking::Client;
+use reqwest::blocking::{Client, Response};
 use std::{
     fs,
     fs::File,
@@ -58,10 +58,11 @@ fn handle_zip_install(
     let extract_dir = temp_dir.path().join("extracted");
     fs::create_dir_all(&extract_dir)?;
 
-    // Распаковка через zip-extensions 0.8.1
+    // Распаковка архива
     zip_extract(&download_path, &extract_dir)
         .map_err(|e| anyhow::anyhow!("🔧 Failed to extract ZIP: {}", e))?;
 
+    // Проверка содержимого архива
     let entries: Vec<PathBuf> = fs::read_dir(&extract_dir)?
         .filter_map(|e| e.ok().map(|entry| entry.path()))
         .collect();
@@ -70,11 +71,13 @@ fn handle_zip_install(
         return Err(anyhow::anyhow!("📭 Empty ZIP archive"));
     }
 
+    // Определение директории для копирования
     let (source_dir, should_create_subdir) = match entries.as_slice() {
         [single_entry] if single_entry.is_dir() => (single_entry.clone(), true),
         _ => (extract_dir.clone(), false),
     };
 
+    // Создание целевой директории
     let base_dir = config::base_dir();
     let target_dir = base_dir.join(&addon.target_path);
     let final_target = if should_create_subdir {
@@ -93,6 +96,7 @@ fn handle_zip_install(
 fn copy_all_contents(source: &Path, dest: &Path) -> Result<()> {
     info!("📁 Copying: [{}] -> [{}]", source.display(), dest.display());
 
+    // Попытки удаления заблокированных файлов
     if dest.exists() {
         let mut attempts = 0;
         let max_attempts = 3;
@@ -116,8 +120,8 @@ fn copy_all_contents(source: &Path, dest: &Path) -> Result<()> {
         }
     }
 
+    // Копирование файлов
     fs::create_dir_all(dest)?;
-
     let options = DirCopyOptions::new().overwrite(true).content_only(true);
 
     for entry in fs::read_dir(source)? {
@@ -143,41 +147,48 @@ fn download_file(
 ) -> Result<()> {
     info!("⏬ Downloading: {}", url);
 
-    let mut response = client
-        .get(url)
-        .header("User-Agent", "NightWatchUpdater/1.0")
-        .timeout(Duration::from_secs(60))
-        .send()
-        .context("🚫 Failed to send request")?;
+    let mut attempts = 0;
+    let max_attempts = 3;
+    let mut response;
+    let mut total_size = 0;
 
-    if !response.status().is_success() {
-        let status = response.status();
-        let body = response.text().unwrap_or_default();
-        error!("HTTP Error {}: {}", status, body);
-        return Err(anyhow::anyhow!("HTTP Error {}: {}", status, body));
+    // Повторные попытки загрузки
+    loop {
+        let result = client
+            .get(url)
+            .header("User-Agent", "NightWatchUpdater/1.0")
+            .timeout(Duration::from_secs(300)) // 5 минут
+            .send();
+
+        match result {
+            Ok(res) if res.status().is_success() => {
+                total_size = res.content_length().unwrap_or(1);
+                response = res;
+                break;
+            }
+            Ok(res) => {
+                let status = res.status();
+                let body = res.text().unwrap_or_default();
+                error!("HTTP Error {}: {}", status, body);
+                if attempts >= max_attempts {
+                    return Err(anyhow::anyhow!("HTTP Error {}: {}", status, body));
+                }
+            }
+            Err(e) => {
+                error!("Network error (attempt {}): {}", attempts + 1, e);
+                if attempts >= max_attempts {
+                    return Err(e.into());
+                }
+            }
+        }
+
+        attempts += 1;
+        std::thread::sleep(Duration::from_secs(5)); // Пауза между попытками
     }
 
-    let content_type = response
-        .headers()
-        .get("content-type")
-        .and_then(|ct| ct.to_str().ok())
-        .unwrap_or("")
-        .to_lowercase();
-
-    if !content_type.contains("zip") && !content_type.contains("octet-stream") {
-        return Err(anyhow::anyhow!(
-            "⚠️ Invalid Content-Type: '{}' for {}",
-            content_type,
-            url
-        ));
-    }
-
-    let total_size = response.content_length().unwrap_or(1);
+    // Запись файла с прогрессом
     let mut file = File::create(path).context("🔴 Failed to create temp file")?;
-
-    info!("📁 Temp file: {}", path.display());
-
-    let mut downloaded = 0;
+    let mut downloaded: u64 = 0;
     let mut buffer = [0u8; 8192];
 
     loop {
@@ -190,14 +201,22 @@ fn download_file(
         state.lock().unwrap().progress = downloaded as f32 / total_size as f32;
     }
 
-    file.sync_all().context("🔴 Failed to flush file")?;
+    // Проверка целостности файла
+    let downloaded_size = fs::metadata(path)?.len();
+    if downloaded_size != total_size {
+        return Err(anyhow::anyhow!(
+            "📭 File corrupted: expected {} bytes, got {}",
+            total_size,
+            downloaded_size
+        ));
+    }
 
+    file.sync_all()?;
     info!(
         "✅ Downloaded: {} ({:.2} MB)",
         url,
-        downloaded as f64 / 1024.0 / 1024.0
+        downloaded_size as f64 / 1024.0 / 1024.0
     );
-
     Ok(())
 }
 
@@ -208,6 +227,7 @@ pub fn uninstall_addon(addon: &Addon) -> Result<bool> {
     let main_path = base_dir.join(&addon.target_path).join(&addon.name);
     let mut success = true;
 
+    // Удаление основной директории
     if main_path.exists() {
         info!("Deleting main directory: {}", main_path.display());
         if let Err(e) = fs::remove_dir_all(&main_path) {
@@ -216,6 +236,7 @@ pub fn uninstall_addon(addon: &Addon) -> Result<bool> {
         }
     }
 
+    // Удаление связанных компонентов
     let install_base = base_dir.join(&addon.target_path);
     if let Ok(entries) = fs::read_dir(install_base) {
         for entry in entries.filter_map(|e| e.ok()) {
