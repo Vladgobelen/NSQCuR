@@ -4,6 +4,7 @@ use indexmap::IndexMap;
 use log::{error, info};
 use reqwest::blocking::Client;
 use serde::Deserialize;
+use std::path::PathBuf;
 
 #[derive(Deserialize)]
 struct AddonConfig {
@@ -56,15 +57,10 @@ pub fn load_addons_config_blocking(client: &Client) -> Result<IndexMap<String, A
 }
 
 pub fn check_game_directory() -> Result<()> {
-    info!("Checking directory structure");
-    let required_dirs = ["Interface/AddOns", "Data", "Fonts"];
-    for dir in required_dirs {
-        let path = std::path::Path::new(dir);
-        if !path.exists() {
-            info!("Creating directory: {}", dir);
-            std::fs::create_dir_all(path)?;
-        }
-    }
-    info!("Directory check completed");
+    info!("Directory structure check skipped (dynamic handling)");
     Ok(())
+}
+
+pub fn base_dir() -> PathBuf {
+    std::env::current_dir().expect("Failed to get current directory")
 }

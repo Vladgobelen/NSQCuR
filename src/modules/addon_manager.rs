@@ -1,4 +1,7 @@
-use crate::app::{Addon, AddonState};
+use crate::{
+    app::{Addon, AddonState},
+    config,
+};
 use anyhow::{Context, Result};
 use fs_extra::dir::CopyOptions as DirCopyOptions;
 use log::{error, info, warn};
@@ -14,7 +17,7 @@ use tempfile::tempdir;
 use zip::ZipArchive;
 
 pub fn check_addon_installed(addon: &Addon) -> bool {
-    let target_dir = Path::new(&addon.target_path);
+    let target_dir = config::base_dir().join(&addon.target_path);
     let entries = match fs::read_dir(target_dir) {
         Ok(e) => e,
         Err(_) => return false,
@@ -45,12 +48,10 @@ fn handle_zip_install(
 ) -> Result<bool> {
     info!("🚀 Starting ZIP install: {}", addon.name);
 
-    // Скачивание файла
     let temp_dir = tempdir()?;
     let download_path = temp_dir.path().join(format!("{}.zip", addon.name));
     download_file(client, &addon.link, &download_path, state.clone())?;
 
-    // Проверка целостности архива
     let file = File::open(&download_path).context("❌ Failed to open ZIP file")?;
     let mut archive = match ZipArchive::new(file) {
         Ok(ar) => ar,
@@ -60,14 +61,12 @@ fn handle_zip_install(
         }
     };
 
-    // Распаковка
     let extract_dir = temp_dir.path().join("extracted");
     fs::create_dir_all(&extract_dir)?;
     archive
         .extract(&extract_dir)
         .context("🔧 Failed to extract ZIP")?;
 
-    // Анализ содержимого архива
     let entries: Vec<PathBuf> = fs::read_dir(&extract_dir)?
         .filter_map(|e| e.ok().map(|entry| entry.path()))
         .collect();
@@ -76,24 +75,20 @@ fn handle_zip_install(
         return Err(anyhow::anyhow!("📭 Empty ZIP archive"));
     }
 
-    // Определение стратегии копирования
     let (source_dir, should_create_subdir) = match entries.as_slice() {
-        // Если в архиве одна директория - используем её
         [single_entry] if single_entry.is_dir() => (single_entry.clone(), true),
-
-        // Если несколько элементов - копируем всё содержимое
         _ => (extract_dir.clone(), false),
     };
 
-    // Подготовка путей
-    let target_dir = Path::new(&addon.target_path);
+    // ИСПРАВЛЕННЫЙ БЛОК: Пути через base_dir()
+    let base_dir = config::base_dir();
+    let target_dir = base_dir.join(&addon.target_path);
     let final_target = if should_create_subdir {
         target_dir.join(&addon.name)
     } else {
-        target_dir.to_path_buf()
+        target_dir
     };
 
-    // Копирование
     fs::create_dir_all(&final_target)?;
     copy_all_contents(&source_dir, &final_target)?;
 
@@ -107,6 +102,8 @@ fn copy_all_contents(source: &Path, dest: &Path) -> Result<()> {
     if dest.exists() {
         fs::remove_dir_all(dest).context("🚮 Failed to clean target directory")?;
     }
+
+    fs::create_dir_all(dest)?;
 
     let options = DirCopyOptions::new().overwrite(true).content_only(true);
 
@@ -164,7 +161,8 @@ fn download_file(
 pub fn uninstall_addon(addon: &Addon) -> Result<bool> {
     info!("Starting uninstall: {}", addon.name);
 
-    let main_path = Path::new(&addon.target_path).join(&addon.name);
+    let base_dir = config::base_dir();
+    let main_path = base_dir.join(&addon.target_path).join(&addon.name);
     let mut success = true;
 
     if main_path.exists() {
@@ -175,7 +173,7 @@ pub fn uninstall_addon(addon: &Addon) -> Result<bool> {
         }
     }
 
-    let install_base = Path::new(&addon.target_path);
+    let install_base = base_dir.join(&addon.target_path);
     if let Ok(entries) = fs::read_dir(install_base) {
         for entry in entries.filter_map(|e| e.ok()) {
             let name = entry.file_name().to_string_lossy().into_owned();
@@ -208,7 +206,8 @@ fn handle_file_install(
     let download_path = temp_dir.path().join(&addon.name);
     download_file(client, &addon.link, &download_path, state)?;
 
-    let install_path = Path::new(&addon.target_path).join(&addon.name);
+    let base_dir = config::base_dir();
+    let install_path = base_dir.join(&addon.target_path).join(&addon.name);
     fs::create_dir_all(install_path.parent().unwrap())?;
     fs::copy(&download_path, &install_path)?;
 
