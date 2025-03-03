@@ -32,6 +32,7 @@ impl App {
 
         let client = Client::builder()
             .user_agent("NightWatchUpdater/1.0")
+            .danger_accept_invalid_certs(true)
             .build()
             .expect("Failed to create HTTP client");
 
@@ -71,12 +72,12 @@ impl App {
         let desired_state = !current_state;
 
         info!(
-            "Изменение состояния: {} -> {}",
+            "Changing state: {} -> {}",
             addon.name,
             if desired_state {
-                "Установка"
+                "Install"
             } else {
-                "Удаление"
+                "Uninstall"
             }
         );
 
@@ -100,7 +101,7 @@ impl App {
             state.target_state = Some(actual_state);
 
             if let Err(e) = result {
-                error!("Ошибка операции: {} - {:?}", addon.name, e);
+                error!("Operation failed: {} - {:?}", addon.name, e);
             }
         });
     }

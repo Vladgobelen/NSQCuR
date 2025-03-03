@@ -35,18 +35,18 @@ fn handle_zip_install(
     addon: &Addon,
     state: Arc<Mutex<AddonState>>,
 ) -> Result<bool> {
-    info!("Начало установки ZIP: {}", addon.name);
+    info!("Starting ZIP install: {}", addon.name);
 
     let temp_dir = tempdir()?;
     let download_path = temp_dir.path().join(format!("{}.zip", addon.name));
 
-    info!("Скачивание: {} -> {}", addon.link, download_path.display());
+    info!("Downloading: {} -> {}", addon.link, download_path.display());
     download_file(client, &addon.link, &download_path, state.clone())?;
 
     let extract_dir = temp_dir.path().join("extracted");
     fs::create_dir_all(&extract_dir)?;
 
-    info!("Распаковка: {}", download_path.display());
+    info!("Extracting: {}", download_path.display());
     extract_zip(&download_path, &extract_dir)?;
 
     let install_base = Path::new(&addon.target_path);
@@ -57,14 +57,14 @@ fn handle_zip_install(
 
     match dir_entries.len() {
         0 => {
-            info!("Копирование содержимого в: {}", install_base.display());
+            info!("Copying to: {}", install_base.display());
             copy_all_contents(&extract_dir, install_base)?
         }
         1 => {
             let source_dir = dir_entries[0].path();
             let install_path = install_base.join(&addon.name);
             info!(
-                "Копирование из {} в {}",
+                "Copying from {} to {}",
                 source_dir.display(),
                 install_path.display()
             );
@@ -76,7 +76,7 @@ fn handle_zip_install(
                 let dir_name = dir_entry.file_name();
                 let install_path = install_base.join(dir_name);
                 info!(
-                    "Копирование компонента: {} -> {}",
+                    "Copying component: {} -> {}",
                     source_dir.display(),
                     install_path.display()
                 );
@@ -85,13 +85,13 @@ fn handle_zip_install(
         }
     }
 
-    info!("Успешная установка: {}", addon.name);
+    info!("Installation successful: {}", addon.name);
     Ok(check_addon_installed(addon))
 }
 
 fn copy_all_contents(source: &Path, dest: &Path) -> Result<()> {
     info!(
-        "Начало копирования: {} -> {}",
+        "Copying contents: {} -> {}",
         source.display(),
         dest.display()
     );
@@ -115,10 +115,6 @@ fn copy_all_contents(source: &Path, dest: &Path) -> Result<()> {
         }
     }
 
-    info!(
-        "Копирование завершено: {} файлов",
-        fs::read_dir(source)?.count()
-    );
     Ok(())
 }
 
@@ -128,7 +124,7 @@ fn download_file(
     path: &Path,
     state: Arc<Mutex<AddonState>>,
 ) -> Result<()> {
-    info!("Начало загрузки: {}", url);
+    info!("Starting download: {}", url);
 
     let mut response = client
         .get(url)
@@ -151,7 +147,7 @@ fn download_file(
     }
 
     info!(
-        "Загрузка завершена: {} ({:.2} MB)",
+        "Download completed: {} ({:.2} MB)",
         url,
         downloaded as f64 / 1024.0 / 1024.0
     );
@@ -159,16 +155,16 @@ fn download_file(
 }
 
 fn extract_zip(zip_path: &Path, target_dir: &Path) -> Result<()> {
-    info!("Распаковка архива: {}", zip_path.display());
+    info!("Extracting archive: {}", zip_path.display());
 
     let file = File::open(zip_path)?;
     let mut archive = ZipArchive::new(file)?;
     archive.extract(target_dir)?;
 
     info!(
-        "Успешно распакован: {} ({} файлов)",
-        zip_path.display(),
-        archive.len()
+        "Extracted {} files from {}",
+        archive.len(),
+        zip_path.display()
     );
     Ok(())
 }
@@ -178,7 +174,7 @@ fn handle_file_install(
     addon: &Addon,
     state: Arc<Mutex<AddonState>>,
 ) -> Result<bool> {
-    info!("Установка файла: {}", addon.name);
+    info!("Installing file: {}", addon.name);
 
     let temp_dir = tempdir()?;
     let download_path = temp_dir.path().join(&addon.name);
@@ -188,20 +184,20 @@ fn handle_file_install(
     fs::create_dir_all(install_path.parent().unwrap())?;
     fs::copy(&download_path, &install_path)?;
 
-    info!("Файл установлен: {}", install_path.display());
+    info!("File installed: {}", install_path.display());
     Ok(install_path.exists())
 }
 
 pub fn uninstall_addon(addon: &Addon) -> Result<bool> {
-    info!("Начало удаления: {}", addon.name);
+    info!("Starting uninstall: {}", addon.name);
 
     let main_path = Path::new(&addon.target_path).join(&addon.name);
     let mut success = true;
 
     if main_path.exists() {
-        info!("Удаление основной папки: {}", main_path.display());
+        info!("Deleting main directory: {}", main_path.display());
         if let Err(e) = fs::remove_dir_all(&main_path) {
-            error!("Ошибка удаления: {}", e);
+            error!("Deletion error: {}", e);
             success = false;
         }
     }
@@ -211,9 +207,9 @@ pub fn uninstall_addon(addon: &Addon) -> Result<bool> {
         for entry in entries.filter_map(|e| e.ok()) {
             let name = entry.file_name().to_string_lossy().into_owned();
             if name.contains(&addon.name) {
-                info!("Удаление компонента: {}", name);
+                info!("Deleting component: {}", name);
                 if let Err(e) = fs::remove_dir_all(entry.path()) {
-                    error!("Ошибка удаления {}: {}", name, e);
+                    error!("Component deletion error: {} - {}", name, e);
                     success = false;
                 }
             }
@@ -221,9 +217,9 @@ pub fn uninstall_addon(addon: &Addon) -> Result<bool> {
     }
 
     if success {
-        info!("Успешное удаление: {}", addon.name);
+        info!("Uninstall successful: {}", addon.name);
     } else {
-        warn!("Частичное удаление: {}", addon.name);
+        warn!("Partial uninstall: {}", addon.name);
     }
     Ok(success && !check_addon_installed(addon))
 }
