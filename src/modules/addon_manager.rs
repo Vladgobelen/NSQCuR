@@ -13,7 +13,7 @@ use std::{
     time::Duration,
 };
 use tempfile::tempdir;
-use zip::ZipArchive;
+use zip_extensions::ZipExt;
 
 pub fn check_addon_installed(addon: &Addon) -> bool {
     let target_dir = config::base_dir().join(&addon.target_path);
@@ -55,32 +55,13 @@ fn handle_zip_install(
 
     download_file(client, &addon.link, &download_path, state.clone())?;
 
-    let file_size = fs::metadata(&download_path)
-        .context("🔴 Failed to get file metadata")?
-        .len();
-    if file_size == 0 {
-        return Err(anyhow::anyhow!("📭 Empty ZIP file downloaded"));
-    }
-
-    let mut file = File::open(&download_path).context("❌ Failed to open ZIP file")?;
-    let mut header = [0u8; 4];
-    file.read_exact(&mut header)?;
-    if &header != b"PK\x03\x04" {
-        return Err(anyhow::anyhow!("🚫 Downloaded file is not a valid ZIP"));
-    }
-
-    let mut archive = match ZipArchive::new(file) {
-        Ok(ar) => ar,
-        Err(e) => {
-            error!("💀 Invalid ZIP archive: {}", e);
-            return Err(anyhow::anyhow!("Invalid ZIP archive: {}", e));
-        }
-    };
-
     let extract_dir = temp_dir.path().join("extracted");
     fs::create_dir_all(&extract_dir)?;
-    archive
-        .extract(&extract_dir)
+
+    // Основное изменение: используем zip-extensions для распаковки
+    download_path
+        .as_path()
+        .extract_to_directory(&extract_dir)
         .context("🔧 Failed to extract ZIP")?;
 
     let entries: Vec<PathBuf> = fs::read_dir(&extract_dir)?
