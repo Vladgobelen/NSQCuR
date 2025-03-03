@@ -2,7 +2,7 @@ use crate::app::{Addon, AddonState};
 use crate::config;
 use anyhow::{Context, Result};
 use fs_extra::dir::CopyOptions;
-use log::{error, info, warn};
+use log::{error, info};
 use std::{
     fs,
     fs::File,
