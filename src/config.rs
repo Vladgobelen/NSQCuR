@@ -62,7 +62,15 @@ pub fn load_addons_config_blocking(client: &Agent) -> Result<IndexMap<String, Ad
 }
 
 pub fn check_game_directory() -> Result<()> {
+    let wow_exe = base_dir().join("Wow.exe");
+    if !wow_exe.exists() {
+        return Err(anyhow::anyhow!("Game not found in current directory"));
+    }
     Ok(())
+}
+
+pub fn get_wow_path() -> PathBuf {
+    base_dir().join("Wow.exe")
 }
 
 pub fn base_dir() -> PathBuf {

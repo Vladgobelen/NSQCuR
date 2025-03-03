@@ -1,6 +1,7 @@
 use eframe::egui::{self, CentralPanel, ProgressBar, ScrollArea};
-use log::error;
+use log::{error, info};
 use serde::Deserialize;
+use std::process::Command;
 use std::sync::{Arc, Mutex};
 use ureq::Agent;
 
@@ -22,12 +23,14 @@ pub struct AddonState {
 pub struct App {
     pub addons: Vec<(Addon, Arc<Mutex<AddonState>>)>,
     pub client: Agent,
+    pub game_available: bool,
 }
 
 impl App {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         cc.egui_ctx.set_visuals(egui::Visuals::dark());
-        crate::config::check_game_directory().unwrap_or_else(|e| panic!("{}", e));
+
+        let game_available = crate::config::check_game_directory().is_ok();
 
         let client = ureq::AgentBuilder::new()
             .timeout_connect(std::time::Duration::from_secs(30))
@@ -54,6 +57,7 @@ impl App {
         Self {
             addons: addons_with_state,
             client,
+            game_available,
         }
     }
 
@@ -91,6 +95,24 @@ impl App {
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         CentralPanel::default().show(ctx, |ui| {
+            egui::TopBottomPanel::top("top_panel").show_inside(ui, |ui| {
+                ui.horizontal(|ui| {
+                    if self.game_available {
+                        if ui.button("🚀 Запустить игру").clicked() {
+                            match launch_game() {
+                                Ok(_) => info!("Game launched successfully"),
+                                Err(e) => error!("Failed to launch game: {}", e),
+                            }
+                        }
+                    } else {
+                        ui.colored_label(
+                            egui::Color32::RED,
+                            "❌ Игра не найдена в текущей директории",
+                        );
+                    }
+                });
+            });
+
             ui.heading("Addon Manager");
             ui.separator();
 
@@ -128,4 +150,23 @@ impl eframe::App for App {
             }
         });
     }
+}
+
+fn launch_game() -> Result<(), std::io::Error> {
+    let exe_path = crate::config::get_wow_path();
+
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        Command::new(exe_path)
+            .creation_flags(0x08000000) // CREATE_NO_WINDOW
+            .spawn()?;
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        Command::new(exe_path).spawn()?;
+    }
+
+    Ok(())
 }
