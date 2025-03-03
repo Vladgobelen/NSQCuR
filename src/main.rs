@@ -17,8 +17,9 @@ fn main() -> eframe::Result<()> {
 
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
-            .with_inner_size([400.0, 600.0]) // Фиксированный стартовый размер
-            .with_min_inner_size([400.0, 600.0]), // Минимальные размеры
+            .with_inner_size([400.0, 600.0])
+            .with_min_inner_size([400.0, 600.0])
+            .with_icon(load_icon().expect("Failed to load icon")),
         ..Default::default()
     };
 
@@ -29,6 +30,7 @@ fn main() -> eframe::Result<()> {
     )
 }
 
+#[allow(dead_code)]
 fn load_icon() -> Option<IconData> {
     let icon_bytes = include_bytes!("../resources/emblem.ico");
     let image = image::load_from_memory(icon_bytes).ok()?.to_rgba8();
