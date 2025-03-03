@@ -1,9 +1,8 @@
 use eframe::egui::{self, CentralPanel, ProgressBar, ScrollArea};
-use log::{error, info};
-use reqwest::Client;
+use log::error;
+use reqwest::blocking::Client;
 use serde::Deserialize;
-use std::sync::Arc;
-use tokio::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 #[derive(Clone, Deserialize)]
 pub struct Addon {
@@ -63,8 +62,8 @@ impl App {
         let (addon, state) = self.addons[index].clone();
         let client = self.client.clone();
 
-        tokio::spawn(async move {
-            let mut state_lock = state.lock().await;
+        std::thread::spawn(move || {
+            let mut state_lock = state.lock().unwrap();
             let current_state = crate::modules::addon_manager::check_addon_installed(&addon);
             let desired_state = !current_state;
 
@@ -74,12 +73,12 @@ impl App {
             drop(state_lock);
 
             let result = if desired_state {
-                crate::modules::addon_manager::install_addon(&client, &addon, state.clone()).await
+                crate::modules::addon_manager::install_addon(&client, &addon, state.clone())
             } else {
                 crate::modules::addon_manager::uninstall_addon(&addon)
             };
 
-            let mut state = state.lock().await;
+            let mut state = state.lock().unwrap();
             state.installing = false;
             state.target_state = Some(crate::modules::addon_manager::check_addon_installed(&addon));
 
@@ -100,7 +99,7 @@ impl eframe::App for App {
 
             ScrollArea::vertical().show(ui, |ui| {
                 for (i, (addon, state)) in self.addons.iter().enumerate() {
-                    let state = state.blocking_lock();
+                    let mut state = state.lock().unwrap();
 
                     ui.horizontal(|ui| {
                         let enabled = !state.installing;

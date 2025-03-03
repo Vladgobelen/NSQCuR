@@ -1,20 +1,18 @@
 use crate::app::{Addon, AddonState};
 use crate::config;
 use anyhow::{Context, Result};
-use futures::StreamExt;
+use fs_extra::dir::CopyOptions as DirCopyOptions;
 use log::{error, info, warn};
-use reqwest::Client;
+use reqwest::blocking::Client;
 use std::{
     fs,
-    path::{Path, PathBuf},
-    sync::Arc,
-};
-use tokio::{
     fs::File,
-    io::AsyncWriteExt,
-    sync::Mutex,
-    time::{sleep, Duration},
+    io::{Read, Write},
+    path::{Path, PathBuf},
+    sync::{Arc, Mutex},
+    time::Duration,
 };
+use tempfile::tempdir;
 use zip_extensions::zip_extract;
 
 pub fn check_addon_installed(addon: &Addon) -> bool {
@@ -30,32 +28,32 @@ pub fn check_addon_installed(addon: &Addon) -> bool {
     })
 }
 
-pub async fn install_addon(
+pub fn install_addon(
     client: &Client,
     addon: &Addon,
     state: Arc<Mutex<AddonState>>,
 ) -> Result<bool> {
     if addon.link.ends_with(".zip") {
-        handle_zip_install(client, addon, state).await
+        handle_zip_install(client, addon, state)
     } else {
-        handle_file_install(client, addon, state).await
+        handle_file_install(client, addon, state)
     }
 }
 
-async fn handle_zip_install(
+fn handle_zip_install(
     client: &Client,
     addon: &Addon,
     state: Arc<Mutex<AddonState>>,
 ) -> Result<bool> {
     info!("🚀 Starting ZIP install: {}", addon.name);
 
-    let temp_dir = tempfile::tempdir().context("🔴 Failed to create temp dir")?;
+    let temp_dir = tempdir().context("🔴 Failed to create temp dir")?;
     let download_path = temp_dir.path().join(format!("{}.zip", addon.name));
 
     info!("📂 Temp dir: {}", temp_dir.path().display());
     info!("📥 ZIP path: {}", download_path.display());
 
-    download_file(client, &addon.link, &download_path, state.clone()).await?;
+    download_file(client, &addon.link, &download_path, state.clone())?;
 
     let extract_dir = temp_dir.path().join("extracted");
     fs::create_dir_all(&extract_dir)?;
@@ -91,7 +89,7 @@ async fn handle_zip_install(
     Ok(check_addon_installed(addon))
 }
 
-async fn download_file(
+fn download_file(
     client: &Client,
     url: &str,
     path: &Path,
@@ -101,24 +99,25 @@ async fn download_file(
 
     let mut attempts = 0;
     let max_attempts = 3;
-    let mut total_size = 0u64;
+    let mut response;
+    let total_size;
 
-    let response = loop {
+    loop {
         let result = client
             .get(url)
             .header("User-Agent", "NightWatchUpdater/1.0")
             .timeout(Duration::from_secs(300))
-            .send()
-            .await;
+            .send();
 
         match result {
             Ok(res) if res.status().is_success() => {
-                total_size = res.content_length().unwrap_or(0);
-                break res;
+                total_size = res.content_length().unwrap_or(1);
+                response = res;
+                break;
             }
             Ok(res) => {
                 let status = res.status();
-                let body = res.text().await.unwrap_or_default();
+                let body = res.text().unwrap_or_default();
                 error!("HTTP Error {}: {}", status, body);
                 if attempts >= max_attempts {
                     return Err(anyhow::anyhow!("HTTP Error {}: {}", status, body));
@@ -133,41 +132,37 @@ async fn download_file(
         }
 
         attempts += 1;
-        sleep(Duration::from_secs(5)).await;
-    };
-
-    let mut file = File::create(path)
-        .await
-        .context("🔴 Failed to create temp file")?;
-    let mut stream = response.bytes_stream();
-    let mut downloaded: u64 = 0;
-
-    while let Some(chunk) = stream.next().await {
-        let chunk = chunk.context("🚫 Failed to read chunk")?;
-        file.write_all(&chunk).await?;
-        downloaded += chunk.len() as u64;
-
-        let mut state = state.lock().await;
-        state.progress = if total_size > 0 {
-            downloaded as f32 / total_size as f32
-        } else {
-            0.0
-        };
+        std::thread::sleep(Duration::from_secs(5));
     }
 
-    if total_size > 0 && downloaded != total_size {
+    let mut file = File::create(path).context("🔴 Failed to create temp file")?;
+    let mut downloaded: u64 = 0;
+    let mut buffer = [0u8; 8192];
+
+    loop {
+        let bytes_read = response.read(&mut buffer)?;
+        if bytes_read == 0 {
+            break;
+        }
+        file.write_all(&buffer[..bytes_read])?;
+        downloaded += bytes_read as u64;
+        state.lock().unwrap().progress = downloaded as f32 / total_size as f32;
+    }
+
+    let downloaded_size = fs::metadata(path)?.len();
+    if downloaded_size != total_size {
         return Err(anyhow::anyhow!(
             "📭 File corrupted: expected {} bytes, got {}",
             total_size,
-            downloaded
+            downloaded_size
         ));
     }
 
-    file.sync_all().await?;
+    file.sync_all()?;
     info!(
         "✅ Downloaded: {} ({:.2} MB)",
         url,
-        downloaded as f64 / 1024.0 / 1024.0
+        downloaded_size as f64 / 1024.0 / 1024.0
     );
     Ok(())
 }
@@ -199,9 +194,7 @@ fn copy_all_contents(source: &Path, dest: &Path) -> Result<()> {
     }
 
     fs::create_dir_all(dest)?;
-    let options = fs_extra::dir::CopyOptions::new()
-        .overwrite(true)
-        .content_only(true);
+    let options = DirCopyOptions::new().overwrite(true).content_only(true);
 
     for entry in fs::read_dir(source)? {
         let entry = entry?;
@@ -255,16 +248,16 @@ pub fn uninstall_addon(addon: &Addon) -> Result<bool> {
     Ok(success && !check_addon_installed(addon))
 }
 
-async fn handle_file_install(
+fn handle_file_install(
     client: &Client,
     addon: &Addon,
     state: Arc<Mutex<AddonState>>,
 ) -> Result<bool> {
     info!("Installing file: {}", addon.name);
 
-    let temp_dir = tempfile::tempdir()?;
+    let temp_dir = tempdir()?;
     let download_path = temp_dir.path().join(&addon.name);
-    download_file(client, &addon.link, &download_path, state).await?;
+    download_file(client, &addon.link, &download_path, state)?;
 
     let base_dir = config::base_dir();
     let install_path = base_dir.join(&addon.target_path).join(&addon.name);

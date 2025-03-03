@@ -5,10 +5,9 @@ mod config;
 mod modules;
 
 use app::App;
-use eframe;
+use egui::IconData;
 
-#[tokio::main]
-async fn main() -> eframe::Result<()> {
+fn main() -> eframe::Result<()> {
     simplelog::CombinedLogger::init(vec![simplelog::WriteLogger::new(
         simplelog::LevelFilter::Info,
         simplelog::Config::default(),
@@ -30,13 +29,13 @@ async fn main() -> eframe::Result<()> {
     )
 }
 
-fn load_icon() -> Option<eframe::IconData> {
+fn load_icon() -> Option<IconData> {
     let icon_bytes = include_bytes!("../resources/emblem.ico");
     let image = image::load_from_memory(icon_bytes).ok()?.to_rgba8();
     let (width, height) = (image.width(), image.height());
     let rgba = image.into_raw();
 
-    Some(eframe::IconData {
+    Some(IconData {
         rgba,
         width,
         height,

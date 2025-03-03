@@ -1,7 +1,6 @@
 use crate::app::Addon;
 use anyhow::Result;
 use indexmap::IndexMap;
-use log::info;
 use reqwest::blocking::Client;
 use serde::{de, Deserialize};
 use std::path::PathBuf;
@@ -41,8 +40,6 @@ pub fn load_addons_config_blocking(client: &Client) -> Result<IndexMap<String, A
 
     let config: Config = serde_json::from_str(&text)?;
 
-    info!("Loaded {} addons", config.addons.len());
-
     Ok(config
         .addons
         .into_iter()
@@ -61,7 +58,6 @@ pub fn load_addons_config_blocking(client: &Client) -> Result<IndexMap<String, A
 }
 
 pub fn check_game_directory() -> Result<()> {
-    info!("Directory structure check skipped (dynamic handling)");
     Ok(())
 }
 
