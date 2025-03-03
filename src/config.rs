@@ -1,8 +1,13 @@
 use crate::app::Addon;
-use anyhow::Result;
+use anyhow::{Context, Result};
 use indexmap::IndexMap;
 use reqwest::blocking::Client;
 use serde::Deserialize;
+use std::path::PathBuf;
+
+pub fn get_game_root() -> PathBuf {
+    std::env::current_dir().expect("Failed to get current directory")
+}
 
 #[derive(Deserialize)]
 struct AddonConfig {
@@ -51,11 +56,14 @@ pub fn load_addons_config_blocking(client: &Client) -> Result<IndexMap<String, A
 }
 
 pub fn check_game_directory() -> Result<()> {
-    let required_dirs = ["Interface/AddOns", "Data", "Fonts"];
-    for dir in required_dirs {
-        let path = std::path::Path::new(dir);
+    let game_root = get_game_root();
+    let required_dirs = ["Interface/AddOns", "Data/ruRU", "Fonts"];
+
+    for dir in &required_dirs {
+        let path = game_root.join(dir);
         if !path.exists() {
-            std::fs::create_dir_all(path)?;
+            std::fs::create_dir_all(&path)
+                .with_context(|| format!("Failed to create directory: {:?}", path))?;
         }
     }
     Ok(())

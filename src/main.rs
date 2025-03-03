@@ -6,19 +6,15 @@ mod modules;
 
 use app::App;
 use eframe::egui;
-use egui::IconData;
-use egui::ViewportBuilder;
-use simplelog::*;
-use std::fs::File;
+use egui::{IconData, ViewportBuilder};
+use std::path::Path;
 
 fn main() -> Result<(), eframe::Error> {
-    // Initialize logger
-    WriteLogger::init(
-        LevelFilter::Info,
-        Config::default(),
-        File::create("updater.log").expect("Failed to create log file"),
-    )
-    .expect("Failed to initialize logger");
+    // Проверка запуска из корня игры
+    if !Path::new("WoW.exe").exists() {
+        eprintln!("Запустите программу из корневой директории игры!");
+        std::process::exit(1);
+    }
 
     let options = eframe::NativeOptions {
         viewport: ViewportBuilder::default()
@@ -26,8 +22,6 @@ fn main() -> Result<(), eframe::Error> {
             .with_icon(load_icon().expect("Не удалось загрузить иконку")),
         ..Default::default()
     };
-
-    log::info!("Application started");
 
     eframe::run_native(
         "Апдейтер Ночной Стражи",
