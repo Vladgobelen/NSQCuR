@@ -8,11 +8,13 @@ use app::App;
 use egui::IconData;
 
 fn main() -> eframe::Result<()> {
-    simplelog::CombinedLogger::init(vec![simplelog::WriteLogger::new(
-        simplelog::LevelFilter::Info,
-        simplelog::Config::default(),
-        std::fs::File::create("updater.log").unwrap(),
-    )])
+    simplelog::CombinedLogger::init(vec![
+        simplelog::WriteLogger::new(
+            simplelog::LevelFilter::Info,
+            simplelog::Config::default(),
+            std::fs::File::create("updater.log").unwrap(),
+        )
+    ])
     .unwrap();
 
     let options = eframe::NativeOptions {

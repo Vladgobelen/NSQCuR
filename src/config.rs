@@ -1,12 +1,13 @@
 use crate::app::Addon;
 use anyhow::Result;
 use indexmap::IndexMap;
-use serde::{de, Deserialize};
+use serde::{Deserialize, de};
 use std::path::PathBuf;
 use ureq::Agent;
 
 #[derive(Deserialize)]
 struct AddonConfig {
+    name: String,
     link: String,
     description: String,
     #[serde(deserialize_with = "normalize_path")]
@@ -19,6 +20,19 @@ where
 {
     let path = String::deserialize(deserializer)?;
     Ok(path.replace("/", std::path::MAIN_SEPARATOR.to_string().as_str()))
+}
+
+impl From<AddonConfig> for Addon {
+    fn from(cfg: AddonConfig) -> Self {
+        let is_zip = cfg.link.to_lowercase().ends_with(".zip");
+        Addon {
+            name: cfg.name,
+            link: cfg.link,
+            description: cfg.description,
+            target_path: cfg.target_path,
+            is_zip,
+        }
+    }
 }
 
 pub fn load_addons_config_blocking(client: &Agent) -> Result<IndexMap<String, Addon>> {
@@ -47,17 +61,7 @@ pub fn load_addons_config_blocking(client: &Agent) -> Result<IndexMap<String, Ad
     Ok(config
         .addons
         .into_iter()
-        .map(|(name, cfg)| {
-            (
-                name.clone(),
-                Addon {
-                    name,
-                    link: cfg.link,
-                    description: cfg.description,
-                    target_path: cfg.target_path,
-                },
-            )
-        })
+        .map(|(name, cfg)| (name, Addon::from(cfg)))
         .collect())
 }
 
