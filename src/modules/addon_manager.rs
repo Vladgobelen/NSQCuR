@@ -13,7 +13,7 @@ use std::{
     time::Duration,
 };
 use tempfile::tempdir;
-use zip_extensions::ZipExt;
+use zip_extensions::zip_extract;
 
 pub fn check_addon_installed(addon: &Addon) -> bool {
     let target_dir = config::base_dir().join(&addon.target_path);
@@ -58,11 +58,9 @@ fn handle_zip_install(
     let extract_dir = temp_dir.path().join("extracted");
     fs::create_dir_all(&extract_dir)?;
 
-    // Основное изменение: используем zip-extensions для распаковки
-    download_path
-        .as_path()
-        .extract_to_directory(&extract_dir)
-        .context("🔧 Failed to extract ZIP")?;
+    // Распаковка через zip-extensions 0.8.1
+    zip_extract(&download_path, &extract_dir)
+        .map_err(|e| anyhow::anyhow!("🔧 Failed to extract ZIP: {}", e))?;
 
     let entries: Vec<PathBuf> = fs::read_dir(&extract_dir)?
         .filter_map(|e| e.ok().map(|entry| entry.path()))
