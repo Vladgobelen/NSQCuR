@@ -1,6 +1,5 @@
 use crate::{config, modules::addon_manager};
 use egui::{CentralPanel, ProgressBar, ScrollArea};
-use log::{error, info};
 use reqwest::blocking::Client;
 use serde::Deserialize;
 use std::sync::{Arc, Mutex};
@@ -38,15 +37,6 @@ impl App {
             .into_iter()
             .map(|(_, addon)| {
                 let installed = addon_manager::check_addon_installed(&addon);
-                info!(
-                    "Addon '{}' initial status: {}",
-                    addon.name,
-                    if installed {
-                        "installed"
-                    } else {
-                        "not installed"
-                    }
-                );
                 (
                     addon,
                     Arc::new(Mutex::new(AddonState {
@@ -75,16 +65,6 @@ impl App {
         let current_state = addon_manager::check_addon_installed(&addon);
         let desired_state = !current_state;
 
-        info!(
-            "Toggling addon '{}' to {}",
-            addon.name,
-            if desired_state {
-                "install"
-            } else {
-                "uninstall"
-            }
-        );
-
         state_lock.target_state = Some(desired_state);
         state_lock.installing = true;
         state_lock.progress = 0.0;
@@ -93,31 +73,20 @@ impl App {
         let client = self.client.clone();
         std::thread::spawn(move || {
             let result = if desired_state {
-                info!("Starting installation of {}", addon.name);
                 addon_manager::install_addon(&client, &addon, state.clone())
             } else {
-                info!("Starting uninstallation of {}", addon.name);
                 addon_manager::uninstall_addon(&addon)
             };
 
             let mut state = state.lock().unwrap();
             state.installing = false;
 
+            // Force check actual state
             let actual_state = addon_manager::check_addon_installed(&addon);
             state.target_state = Some(actual_state);
 
             if let Err(e) = result {
-                error!("Operation error on '{}': {:?}", addon.name, e);
-            } else {
-                info!(
-                    "Successfully {} addon '{}'",
-                    if desired_state {
-                        "installed"
-                    } else {
-                        "uninstalled"
-                    },
-                    addon.name
-                );
+                eprintln!("Operation error: {:?}", e);
             }
         });
     }
@@ -135,6 +104,7 @@ impl eframe::App for App {
                 for (i, (addon, state)) in self.addons.iter().enumerate() {
                     let mut state_lock = state.lock().unwrap();
 
+                    // Sync state before rendering
                     let actual_state = addon_manager::check_addon_installed(addon);
                     if state_lock.target_state != Some(actual_state) {
                         state_lock.target_state = Some(actual_state);

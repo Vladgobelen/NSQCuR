@@ -6,16 +6,10 @@ mod modules;
 
 use app::App;
 use eframe::egui;
-use egui::{IconData, ViewportBuilder};
-use std::path::Path;
+use egui::IconData;
+use egui::ViewportBuilder;
 
 fn main() -> Result<(), eframe::Error> {
-    // Проверка запуска из корня игры
-    if !Path::new("WoW.exe").exists() {
-        eprintln!("Запустите программу из корневой директории игры!");
-        std::process::exit(1);
-    }
-
     let options = eframe::NativeOptions {
         viewport: ViewportBuilder::default()
             .with_inner_size([400.0, 600.0])

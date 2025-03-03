@@ -1,7 +1,4 @@
-use crate::{
-    app::{Addon, AddonState},
-    config::get_game_root,
-};
+use crate::app::{Addon, AddonState};
 use anyhow::{Context, Result};
 use fs_extra::dir::CopyOptions as DirCopyOptions;
 use reqwest::blocking::Client;
@@ -16,14 +13,13 @@ use tempfile::tempdir;
 use zip::ZipArchive;
 
 pub fn check_addon_installed(addon: &Addon) -> bool {
-    let game_root = get_game_root();
-    let main_path = game_root.join(&addon.target_path).join(&addon.name);
+    let main_path = Path::new(&addon.target_path).join(&addon.name);
 
     if main_path.exists() {
         return true;
     }
 
-    let install_base = game_root.join(&addon.target_path);
+    let install_base = Path::new(&addon.target_path);
     match fs::read_dir(install_base) {
         Ok(entries) => entries.filter_map(|e| e.ok()).any(|e| {
             let name = e.file_name().to_string_lossy().into_owned();
@@ -58,21 +54,21 @@ fn handle_zip_install(
     fs::create_dir_all(&extract_dir)?;
     extract_zip(&download_path, &extract_dir)?;
 
-    let game_root = get_game_root();
-    let install_base = game_root.join(&addon.target_path);
-
+    let install_base = Path::new(&addon.target_path);
     let dir_entries: Vec<fs::DirEntry> = fs::read_dir(&extract_dir)?
         .filter_map(|e| e.ok())
         .filter(|e| e.metadata().map(|m| m.is_dir()).unwrap_or(false))
         .collect();
 
     match dir_entries.len() {
-        0 => copy_all_contents(&extract_dir, &install_base)?,
+        0 => copy_all_contents(&extract_dir, install_base)?,
+
         1 => {
             let source_dir = dir_entries[0].path();
             let install_path = install_base.join(&addon.name);
             copy_all_contents(&source_dir, &install_path)?;
         }
+
         _ => {
             for dir_entry in dir_entries {
                 let source_dir = dir_entry.path();
@@ -149,9 +145,7 @@ fn handle_file_install(
     let download_path = temp_dir.path().join(&addon.name);
     download_file(client, &addon.link, &download_path, state)?;
 
-    let game_root = get_game_root();
-    let install_path = game_root.join(&addon.target_path).join(&addon.name);
-
+    let install_path = Path::new(&addon.target_path).join(&addon.name);
     fs::create_dir_all(install_path.parent().unwrap())?;
     fs::copy(&download_path, &install_path)?;
 
@@ -159,8 +153,7 @@ fn handle_file_install(
 }
 
 pub fn uninstall_addon(addon: &Addon) -> Result<bool> {
-    let game_root = get_game_root();
-    let main_path = game_root.join(&addon.target_path).join(&addon.name);
+    let main_path = Path::new(&addon.target_path).join(&addon.name);
     let mut success = true;
 
     if main_path.exists() {
@@ -170,7 +163,7 @@ pub fn uninstall_addon(addon: &Addon) -> Result<bool> {
         }
     }
 
-    let install_base = game_root.join(&addon.target_path);
+    let install_base = Path::new(&addon.target_path);
     if let Ok(entries) = fs::read_dir(install_base) {
         for entry in entries.filter_map(|e| e.ok()) {
             let name = entry.file_name().to_string_lossy().into_owned();
