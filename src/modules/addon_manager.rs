@@ -12,6 +12,7 @@ use std::{
     io::{Read, Write},
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
+    time::Duration,
 };
 use tempfile::tempdir;
 use zip::ZipArchive;
@@ -64,7 +65,14 @@ fn handle_zip_install(
         return Err(anyhow::anyhow!("📭 Empty ZIP file downloaded"));
     }
 
-    let file = File::open(&download_path).context("❌ Failed to open ZIP file")?;
+    // Проверка сигнатуры ZIP
+    let mut file = File::open(&download_path).context("❌ Failed to open ZIP file")?;
+    let mut header = [0u8; 4];
+    file.read_exact(&mut header)?;
+    if &header != b"PK\x03\x04" {
+        return Err(anyhow::anyhow!("🚫 Downloaded file is not a valid ZIP"));
+    }
+
     let mut archive = match ZipArchive::new(file) {
         Ok(ar) => ar,
         Err(e) => {
@@ -111,7 +119,26 @@ fn copy_all_contents(source: &Path, dest: &Path) -> Result<()> {
     info!("📁 Copying: [{}] -> [{}]", source.display(), dest.display());
 
     if dest.exists() {
-        fs::remove_dir_all(dest).context("🚮 Failed to clean target directory")?;
+        let mut attempts = 0;
+        let max_attempts = 3;
+        loop {
+            match fs::remove_dir_all(dest) {
+                Ok(_) => break,
+                Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
+                    if attempts >= max_attempts {
+                        return Err(e).context("🚮 Failed to clean target directory");
+                    }
+                    warn!(
+                        "Retrying delete... (attempt {}/{})",
+                        attempts + 1,
+                        max_attempts
+                    );
+                    std::thread::sleep(Duration::from_secs(1));
+                    attempts += 1;
+                }
+                Err(e) => return Err(e).context("🚮 Failed to clean target directory"),
+            }
+        }
     }
 
     fs::create_dir_all(dest)?;
@@ -144,6 +171,7 @@ fn download_file(
     let mut response = client
         .get(url)
         .header("User-Agent", "NightWatchUpdater/1.0")
+        .timeout(Duration::from_secs(60))
         .send()
         .context("🚫 Failed to send request")?;
 
