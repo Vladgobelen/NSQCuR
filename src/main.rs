@@ -6,18 +6,12 @@ mod modules;
 
 use app::App;
 use egui::IconData;
-use log::error;
 
 fn main() -> eframe::Result<()> {
-    std::panic::set_hook(Box::new(|panic_info| {
-        error!("CRITICAL PANIC: {:?}", panic_info);
-    }));
-
-    let log_file = std::fs::File::create("debug.log").unwrap();
     simplelog::CombinedLogger::init(vec![simplelog::WriteLogger::new(
-        simplelog::LevelFilter::Trace,
+        simplelog::LevelFilter::Info,
         simplelog::Config::default(),
-        log_file,
+        std::fs::File::create("updater.log").unwrap(),
     )])
     .unwrap();
 

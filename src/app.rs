@@ -1,5 +1,5 @@
 use eframe::egui::{self, CentralPanel, ProgressBar, ScrollArea};
-use log::{error, info};
+use log::error;
 use serde::Deserialize;
 use std::sync::{Arc, Mutex};
 use ureq::Agent;
@@ -10,7 +10,6 @@ pub struct Addon {
     pub link: String,
     pub description: String,
     pub target_path: String,
-    pub is_zip: bool,
 }
 
 #[derive(Default)]
@@ -28,24 +27,18 @@ pub struct App {
 impl App {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         cc.egui_ctx.set_visuals(egui::Visuals::dark());
-
-        if let Err(e) = crate::config::check_game_directory() {
-            panic!("Game directory check failed: {}", e);
-        }
+        crate::config::check_game_directory().unwrap_or_else(|e| panic!("{}", e));
 
         let client = ureq::AgentBuilder::new()
             .timeout_connect(std::time::Duration::from_secs(30))
             .build();
 
-        let addons = crate::config::load_addons_config_blocking(&client).unwrap_or_else(|e| {
-            error!("Error loading addons config: {}", e);
-            IndexMap::new()
-        });
+        let addons = crate::config::load_addons_config_blocking(&client)
+            .expect("Failed to load addons config");
 
         let addons_with_state = addons
             .into_iter()
-            .map(|(name, mut addon)| {
-                addon.name = name.clone();
+            .map(|(_, addon)| {
                 let installed = crate::modules::addon_manager::check_addon_installed(&addon);
                 (
                     addon,
