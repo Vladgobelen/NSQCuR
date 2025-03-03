@@ -1,7 +1,7 @@
 use crate::app::Addon;
-use anyhow::Result;
+use anyhow::{Context, Result};
 use indexmap::IndexMap;
-use log::info;
+use log::{error, info};
 use serde::{de, Deserialize};
 use std::path::PathBuf;
 use ureq::Agent;
@@ -19,8 +19,15 @@ fn normalize_path<'de, D>(deserializer: D) -> Result<String, D::Error>
 where
     D: de::Deserializer<'de>,
 {
-    let path = String::deserialize(deserializer)?;
-    Ok(path.replace("/", std::path::MAIN_SEPARATOR.to_string().as_str()))
+    let path = String::deserialize(deserializer)?
+        .trim()
+        .replace("/", std::path::MAIN_SEPARATOR.to_string().as_str());
+
+    if path.is_empty() {
+        return Err(de::Error::custom("Target path cannot be empty"));
+    }
+
+    Ok(path)
 }
 
 impl From<AddonConfig> for Addon {
@@ -40,7 +47,8 @@ pub fn load_addons_config_blocking(client: &Agent) -> Result<IndexMap<String, Ad
     let response = client
         .get("https://raw.githubusercontent.com/Vladgobelen/NSQCu/main/addons.json")
         .set("User-Agent", "NightWatchUpdater/1.0")
-        .call()?;
+        .call()
+        .context("Network request failed")?;
 
     if response.status() != 200 {
         return Err(anyhow::anyhow!(
@@ -50,28 +58,39 @@ pub fn load_addons_config_blocking(client: &Agent) -> Result<IndexMap<String, Ad
         ));
     }
 
-    let text = response.into_string()?;
+    let text = response
+        .into_string()
+        .context("Invalid response encoding")?;
+    info!("Raw JSON response: {}", text);
 
     #[derive(Deserialize)]
     struct Config {
         addons: IndexMap<String, AddonConfig>,
     }
 
-    let config: Config = serde_json::from_str(&text)?;
+    let config: Config = serde_json::from_str(&text).context("JSON parse error")?;
+
+    for (name, cfg) in &config.addons {
+        if cfg.link.is_empty() {
+            return Err(anyhow::anyhow!("Addon {} has empty link", name));
+        }
+    }
 
     Ok(config
         .addons
         .into_iter()
-        .map(|(name, cfg)| (name, Addon::from(cfg)))
+        .map(|(name, cfg)| (name.clone(), Addon::from(cfg)))
         .collect())
 }
 
 pub fn check_game_directory() -> Result<()> {
+    let base_dir = base_dir();
+    if !base_dir.exists() {
+        return Err(anyhow::anyhow!("Base directory not found: {:?}", base_dir));
+    }
     Ok(())
 }
 
 pub fn base_dir() -> PathBuf {
-    let path = std::env::current_dir().expect("Failed to get current directory");
-    info!("Base directory: {}", path.display());
-    path
+    std::env::current_dir().expect("Failed to get current directory")
 }

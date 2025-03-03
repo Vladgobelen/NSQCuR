@@ -2,7 +2,7 @@ use crate::app::{Addon, AddonState};
 use crate::config;
 use anyhow::{Context, Result};
 use fs_extra::dir::CopyOptions;
-use log::{error, info, warn};
+use log::{debug, error, info, warn};
 use std::{
     fs,
     fs::File,
@@ -22,15 +22,7 @@ pub fn check_addon_installed(addon: &Addon) -> bool {
         let target_dir = base_dir.join(&addon.target_path).join(&addon.name);
         target_dir.exists()
     } else {
-        let file_name = addon
-            .link
-            .split('/')
-            .last()
-            .unwrap_or(&addon.name)
-            .split('?')
-            .next()
-            .unwrap_or(&addon.name);
-
+        let file_name = sanitize_filename(&addon.link);
         let file_path = base_dir.join(&addon.target_path).join(file_name);
         file_path.exists()
     }
@@ -49,13 +41,10 @@ fn handle_zip_install(
     addon: &Addon,
     state: Arc<Mutex<AddonState>>,
 ) -> Result<bool> {
-    info!("🚀 Starting ZIP install: {}", addon.name);
+    info!("🚀 Installing ZIP: {}", addon.name);
 
-    let temp_dir = tempdir().context("🔴 Failed to create temp dir")?;
+    let temp_dir = tempdir().context("Failed to create temp dir")?;
     let download_path = temp_dir.path().join(format!("{}.zip", addon.name));
-
-    info!("📂 Temp dir: {}", temp_dir.path().display());
-    info!("📥 ZIP path: {}", download_path.display());
 
     download_file(client, &addon.link, &download_path, state.clone())?;
 
@@ -63,14 +52,14 @@ fn handle_zip_install(
     fs::create_dir_all(&extract_dir)?;
 
     zip_extract(&download_path, &extract_dir)
-        .map_err(|e| anyhow::anyhow!("🔧 Failed to extract ZIP: {}", e))?;
+        .map_err(|e| anyhow::anyhow!("ZIP extraction failed: {}", e))?;
 
     let entries: Vec<PathBuf> = fs::read_dir(&extract_dir)?
         .filter_map(|e| e.ok().map(|entry| entry.path()))
         .collect();
 
     if entries.is_empty() {
-        return Err(anyhow::anyhow!("📭 Empty ZIP archive"));
+        return Err(anyhow::anyhow!("Empty ZIP archive"));
     }
 
     let (source_dir, should_create_subdir) = match entries.as_slice() {
@@ -89,7 +78,7 @@ fn handle_zip_install(
     fs::create_dir_all(&final_target)?;
     copy_all_contents(&source_dir, &final_target)?;
 
-    info!("✅ Successfully installed: {}", addon.name);
+    info!("✅ Installed: {}", addon.name);
     Ok(check_addon_installed(addon))
 }
 
@@ -100,32 +89,28 @@ fn handle_file_install(
 ) -> Result<bool> {
     info!("📥 Installing file: {}", addon.name);
 
-    let file_name = addon
-        .link
-        .split('/')
-        .last()
-        .unwrap_or(&addon.name)
-        .split('?')
-        .next()
-        .unwrap_or(&addon.name)
-        .trim()
-        .to_string();
-
-    info!("File name parsed: '{}'", file_name);
-
+    let file_name = sanitize_filename(&addon.link);
     let target_path = config::base_dir().join(&addon.target_path).join(&file_name);
 
     if let Some(parent) = target_path.parent() {
-        fs::create_dir_all(parent).context(format!(
-            "🔴 Failed to create directory: {}",
-            parent.display()
-        ))?;
+        fs::create_dir_all(parent).context(format!("Failed to create directory: {:?}", parent))?;
     }
 
     download_file(client, &addon.link, &target_path, state)?;
 
-    info!("✅ File installed: {}", target_path.display());
+    info!("✅ File installed: {:?}", target_path);
     Ok(target_path.exists())
+}
+
+fn sanitize_filename(url: &str) -> String {
+    url.rsplit('/')
+        .next()
+        .unwrap_or("file")
+        .split('?')
+        .next()
+        .unwrap_or("file")
+        .trim()
+        .to_string()
 }
 
 fn download_file(
@@ -137,7 +122,7 @@ fn download_file(
     info!("⏬ Downloading: {}", url);
 
     if !url.starts_with("https://") {
-        return Err(anyhow::anyhow!("Invalid URL protocol: {}", url));
+        return Err(anyhow::anyhow!("Insecure protocol: {}", url));
     }
 
     let mut attempts = 0;
@@ -171,7 +156,7 @@ fn download_file(
     };
 
     let mut reader = response.into_reader();
-    let mut file = File::create(path).context("🔴 Failed to create temp file")?;
+    let mut file = File::create(path).context("Failed to create file")?;
     let mut downloaded: u64 = 0;
     let mut buffer = [0u8; 8192];
 
@@ -187,7 +172,7 @@ fn download_file(
 
     if total_size > 0 && downloaded != total_size {
         return Err(anyhow::anyhow!(
-            "📭 File corrupted: expected {} bytes, got {}",
+            "File corrupted: expected {} bytes, got {}",
             total_size,
             downloaded
         ));
@@ -195,7 +180,7 @@ fn download_file(
 
     file.sync_all()?;
     info!(
-        "✅ Downloaded: {} ({:.2} MB)",
+        "Download complete: {} ({:.2} MB)",
         url,
         downloaded as f64 / 1024.0 / 1024.0
     );
@@ -203,7 +188,7 @@ fn download_file(
 }
 
 fn copy_all_contents(source: &Path, dest: &Path) -> Result<()> {
-    info!("📁 Copying: [{}] → [{}]", source.display(), dest.display());
+    info!("📁 Copying: {:?} → {:?}", source, dest);
 
     fs::create_dir_all(dest)?;
     let options = CopyOptions::new().overwrite(true).content_only(true);
@@ -224,40 +209,35 @@ fn copy_all_contents(source: &Path, dest: &Path) -> Result<()> {
 }
 
 pub fn uninstall_addon(addon: &Addon) -> Result<bool> {
-    info!("Starting uninstall: {}", addon.name);
+    info!("Uninstalling: {}", addon.name);
 
     let base_dir = config::base_dir();
     let mut success = true;
 
     if addon.is_zip {
         let dir_path = base_dir.join(&addon.target_path).join(&addon.name);
-        info!("🗑 Attempting to delete directory: {}", dir_path.display());
+        info!("Deleting directory: {:?}", dir_path);
+
         if dir_path.exists() {
-            if let Err(e) = fs::remove_dir_all(&dir_path) {
-                error!("Directory deletion error: {}", e);
-                success = false;
-            }
+            fs::remove_dir_all(&dir_path)
+                .map_err(|e| {
+                    error!("Directory deletion error: {}", e);
+                    success = false;
+                })
+                .ok();
         } else {
-            warn!("Directory not found: {}", dir_path.display());
+            warn!("Directory not found: {:?}", dir_path);
             success = false;
         }
     } else {
-        let file_name = addon
-            .link
-            .split('/')
-            .last()
-            .unwrap_or(&addon.name)
-            .split('?')
-            .next()
-            .unwrap_or(&addon.name);
-
+        let file_name = sanitize_filename(&addon.link);
         let file_path = base_dir.join(&addon.target_path).join(file_name);
-        info!("🗑 Attempting to delete file: {}", file_path.display());
+        info!("Deleting file: {:?}", file_path);
 
         match fs::remove_file(&file_path) {
-            Ok(_) => info!("Deleted successfully"),
+            Ok(_) => debug!("File deleted"),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                warn!("File not found: {}", file_path.display())
+                warn!("File not found")
             }
             Err(e) => {
                 error!("Deletion error: {}", e);
