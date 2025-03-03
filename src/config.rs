@@ -1,9 +1,9 @@
 use crate::app::Addon;
 use anyhow::Result;
 use indexmap::IndexMap;
+use log::{error, info};
 use reqwest::blocking::Client;
 use serde::Deserialize;
-use simplelog::*;
 
 #[derive(Deserialize)]
 struct AddonConfig {

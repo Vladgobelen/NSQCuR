@@ -1,8 +1,8 @@
 use crate::app::{Addon, AddonState};
 use anyhow::{Context, Result};
 use fs_extra::dir::CopyOptions as DirCopyOptions;
+use log::{error, info, warn};
 use reqwest::blocking::Client;
-use simplelog::*;
 use std::{
     fs,
     fs::File,

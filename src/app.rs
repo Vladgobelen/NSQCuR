@@ -1,8 +1,8 @@
 use crate::{config, modules::addon_manager};
 use egui::{CentralPanel, ProgressBar, ScrollArea};
+use log::{error, info};
 use reqwest::blocking::Client;
 use serde::Deserialize;
-use simplelog::*;
 use std::sync::{Arc, Mutex};
 
 #[derive(Clone, Deserialize)]
