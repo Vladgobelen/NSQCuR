@@ -2,6 +2,7 @@ use crate::{config, modules::addon_manager};
 use egui::{CentralPanel, ProgressBar, ScrollArea};
 use reqwest::blocking::Client;
 use serde::Deserialize;
+use simplelog::*;
 use std::sync::{Arc, Mutex};
 
 #[derive(Clone, Deserialize)]
@@ -31,8 +32,6 @@ impl App {
 
         let client = Client::builder()
             .user_agent("NightWatchUpdater/1.0")
-            // Раскомментировать для тестирования с проблемными сертификатами:
-            // .danger_accept_invalid_certs(true)
             .build()
             .expect("Failed to create HTTP client");
 
@@ -71,6 +70,16 @@ impl App {
         let current_state = addon_manager::check_addon_installed(&addon);
         let desired_state = !current_state;
 
+        info!(
+            "Изменение состояния: {} -> {}",
+            addon.name,
+            if desired_state {
+                "Установка"
+            } else {
+                "Удаление"
+            }
+        );
+
         state_lock.target_state = Some(desired_state);
         state_lock.installing = true;
         state_lock.progress = 0.0;
@@ -91,7 +100,7 @@ impl App {
             state.target_state = Some(actual_state);
 
             if let Err(e) = result {
-                eprintln!("Operation error: {:?}", e);
+                error!("Ошибка операции: {} - {:?}", addon.name, e);
             }
         });
     }

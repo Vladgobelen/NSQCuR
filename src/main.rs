@@ -8,8 +8,16 @@ use app::App;
 use eframe::egui;
 use egui::IconData;
 use egui::ViewportBuilder;
+use simplelog::*;
 
 fn main() -> Result<(), eframe::Error> {
+    CombinedLogger::init(vec![WriteLogger::new(
+        LevelFilter::Info,
+        Config::default(),
+        std::fs::File::create("updater.log").unwrap(),
+    )])
+    .unwrap();
+
     let options = eframe::NativeOptions {
         viewport: ViewportBuilder::default()
             .with_inner_size([400.0, 600.0])

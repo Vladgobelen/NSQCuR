@@ -3,6 +3,7 @@ use anyhow::Result;
 use indexmap::IndexMap;
 use reqwest::blocking::Client;
 use serde::Deserialize;
+use simplelog::*;
 
 #[derive(Deserialize)]
 struct AddonConfig {
@@ -18,6 +19,7 @@ pub fn load_addons_config_blocking(client: &Client) -> Result<IndexMap<String, A
         .send()?;
 
     if !response.status().is_success() {
+        error!("Ошибка загрузки конфига: {}", response.status());
         return Err(anyhow::anyhow!(
             "HTTP Error: {} - {}",
             response.status(),
@@ -34,6 +36,7 @@ pub fn load_addons_config_blocking(client: &Client) -> Result<IndexMap<String, A
 
     let config: Config = serde_json::from_str(&text)?;
 
+    info!("Успешно загружено {} аддонов", config.addons.len());
     Ok(config
         .addons
         .into_iter()
@@ -52,12 +55,15 @@ pub fn load_addons_config_blocking(client: &Client) -> Result<IndexMap<String, A
 }
 
 pub fn check_game_directory() -> Result<()> {
+    info!("Проверка структуры директорий");
     let required_dirs = ["Interface/AddOns", "Data", "Fonts"];
     for dir in required_dirs {
         let path = std::path::Path::new(dir);
         if !path.exists() {
+            info!("Создание отсутствующей директории: {}", dir);
             std::fs::create_dir_all(path)?;
         }
     }
+    info!("Проверка директорий завершена");
     Ok(())
 }

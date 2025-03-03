@@ -2,6 +2,7 @@ use crate::app::{Addon, AddonState};
 use anyhow::{Context, Result};
 use fs_extra::dir::CopyOptions as DirCopyOptions;
 use reqwest::blocking::Client;
+use simplelog::*;
 use std::{
     fs,
     fs::File,
@@ -14,19 +15,7 @@ use zip::ZipArchive;
 
 pub fn check_addon_installed(addon: &Addon) -> bool {
     let main_path = Path::new(&addon.target_path).join(&addon.name);
-
-    if main_path.exists() {
-        return true;
-    }
-
-    let install_base = Path::new(&addon.target_path);
-    match fs::read_dir(install_base) {
-        Ok(entries) => entries.filter_map(|e| e.ok()).any(|e| {
-            let name = e.file_name().to_string_lossy().into_owned();
-            name.starts_with(&addon.name) || name.contains(&addon.name)
-        }),
-        Err(_) => false,
-    }
+    main_path.exists()
 }
 
 pub fn install_addon(
@@ -46,12 +35,18 @@ fn handle_zip_install(
     addon: &Addon,
     state: Arc<Mutex<AddonState>>,
 ) -> Result<bool> {
+    info!("Начало установки ZIP: {}", addon.name);
+
     let temp_dir = tempdir()?;
     let download_path = temp_dir.path().join(format!("{}.zip", addon.name));
+
+    info!("Скачивание: {} -> {}", addon.link, download_path.display());
     download_file(client, &addon.link, &download_path, state.clone())?;
 
     let extract_dir = temp_dir.path().join("extracted");
     fs::create_dir_all(&extract_dir)?;
+
+    info!("Распаковка: {}", download_path.display());
     extract_zip(&download_path, &extract_dir)?;
 
     let install_base = Path::new(&addon.target_path);
@@ -61,26 +56,46 @@ fn handle_zip_install(
         .collect();
 
     match dir_entries.len() {
-        0 => copy_all_contents(&extract_dir, install_base)?,
+        0 => {
+            info!("Копирование содержимого в: {}", install_base.display());
+            copy_all_contents(&extract_dir, install_base)?
+        }
         1 => {
             let source_dir = dir_entries[0].path();
             let install_path = install_base.join(&addon.name);
-            copy_all_contents(&source_dir, &install_path)?;
+            info!(
+                "Копирование из {} в {}",
+                source_dir.display(),
+                install_path.display()
+            );
+            copy_all_contents(&source_dir, &install_path)?
         }
         _ => {
             for dir_entry in dir_entries {
                 let source_dir = dir_entry.path();
                 let dir_name = dir_entry.file_name();
                 let install_path = install_base.join(dir_name);
+                info!(
+                    "Копирование компонента: {} -> {}",
+                    source_dir.display(),
+                    install_path.display()
+                );
                 copy_all_contents(&source_dir, &install_path)?;
             }
         }
     }
 
+    info!("Успешная установка: {}", addon.name);
     Ok(check_addon_installed(addon))
 }
 
 fn copy_all_contents(source: &Path, dest: &Path) -> Result<()> {
+    info!(
+        "Начало копирования: {} -> {}",
+        source.display(),
+        dest.display()
+    );
+
     if dest.exists() {
         fs::remove_dir_all(dest).context("Failed to remove existing directory")?;
     }
@@ -100,6 +115,10 @@ fn copy_all_contents(source: &Path, dest: &Path) -> Result<()> {
         }
     }
 
+    info!(
+        "Копирование завершено: {} файлов",
+        fs::read_dir(source)?.count()
+    );
     Ok(())
 }
 
@@ -109,6 +128,8 @@ fn download_file(
     path: &Path,
     state: Arc<Mutex<AddonState>>,
 ) -> Result<()> {
+    info!("Начало загрузки: {}", url);
+
     let mut response = client
         .get(url)
         .header("User-Agent", "NightWatchUpdater/1.0")
@@ -128,13 +149,27 @@ fn download_file(
         downloaded += bytes_read as u64;
         state.lock().unwrap().progress = downloaded as f32 / total_size as f32;
     }
+
+    info!(
+        "Загрузка завершена: {} ({:.2} MB)",
+        url,
+        downloaded as f64 / 1024.0 / 1024.0
+    );
     Ok(())
 }
 
 fn extract_zip(zip_path: &Path, target_dir: &Path) -> Result<()> {
+    info!("Распаковка архива: {}", zip_path.display());
+
     let file = File::open(zip_path)?;
     let mut archive = ZipArchive::new(file)?;
     archive.extract(target_dir)?;
+
+    info!(
+        "Успешно распакован: {} ({} файлов)",
+        zip_path.display(),
+        archive.len()
+    );
     Ok(())
 }
 
@@ -143,6 +178,8 @@ fn handle_file_install(
     addon: &Addon,
     state: Arc<Mutex<AddonState>>,
 ) -> Result<bool> {
+    info!("Установка файла: {}", addon.name);
+
     let temp_dir = tempdir()?;
     let download_path = temp_dir.path().join(&addon.name);
     download_file(client, &addon.link, &download_path, state)?;
@@ -151,16 +188,20 @@ fn handle_file_install(
     fs::create_dir_all(install_path.parent().unwrap())?;
     fs::copy(&download_path, &install_path)?;
 
+    info!("Файл установлен: {}", install_path.display());
     Ok(install_path.exists())
 }
 
 pub fn uninstall_addon(addon: &Addon) -> Result<bool> {
+    info!("Начало удаления: {}", addon.name);
+
     let main_path = Path::new(&addon.target_path).join(&addon.name);
     let mut success = true;
 
     if main_path.exists() {
+        info!("Удаление основной папки: {}", main_path.display());
         if let Err(e) = fs::remove_dir_all(&main_path) {
-            eprintln!("Error deleting main folder: {}", e);
+            error!("Ошибка удаления: {}", e);
             success = false;
         }
     }
@@ -170,13 +211,19 @@ pub fn uninstall_addon(addon: &Addon) -> Result<bool> {
         for entry in entries.filter_map(|e| e.ok()) {
             let name = entry.file_name().to_string_lossy().into_owned();
             if name.contains(&addon.name) {
+                info!("Удаление компонента: {}", name);
                 if let Err(e) = fs::remove_dir_all(entry.path()) {
-                    eprintln!("Error deleting component {}: {}", name, e);
+                    error!("Ошибка удаления {}: {}", name, e);
                     success = false;
                 }
             }
         }
     }
 
+    if success {
+        info!("Успешное удаление: {}", addon.name);
+    } else {
+        warn!("Частичное удаление: {}", addon.name);
+    }
     Ok(success && !check_addon_installed(addon))
 }
