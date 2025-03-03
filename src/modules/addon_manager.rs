@@ -3,7 +3,7 @@ use crate::config;
 use anyhow::{Context, Result};
 use fs_extra::dir::CopyOptions as DirCopyOptions;
 use log::{error, info, warn};
-use reqwest::blocking::{Client, Response};
+use reqwest::blocking::Client;
 use std::{
     fs,
     fs::File,
@@ -58,11 +58,9 @@ fn handle_zip_install(
     let extract_dir = temp_dir.path().join("extracted");
     fs::create_dir_all(&extract_dir)?;
 
-    // Распаковка архива
     zip_extract(&download_path, &extract_dir)
         .map_err(|e| anyhow::anyhow!("🔧 Failed to extract ZIP: {}", e))?;
 
-    // Проверка содержимого архива
     let entries: Vec<PathBuf> = fs::read_dir(&extract_dir)?
         .filter_map(|e| e.ok().map(|entry| entry.path()))
         .collect();
@@ -71,13 +69,11 @@ fn handle_zip_install(
         return Err(anyhow::anyhow!("📭 Empty ZIP archive"));
     }
 
-    // Определение директории для копирования
     let (source_dir, should_create_subdir) = match entries.as_slice() {
         [single_entry] if single_entry.is_dir() => (single_entry.clone(), true),
         _ => (extract_dir.clone(), false),
     };
 
-    // Создание целевой директории
     let base_dir = config::base_dir();
     let target_dir = base_dir.join(&addon.target_path);
     let final_target = if should_create_subdir {
@@ -96,7 +92,6 @@ fn handle_zip_install(
 fn copy_all_contents(source: &Path, dest: &Path) -> Result<()> {
     info!("📁 Copying: [{}] -> [{}]", source.display(), dest.display());
 
-    // Попытки удаления заблокированных файлов
     if dest.exists() {
         let mut attempts = 0;
         let max_attempts = 3;
@@ -120,7 +115,6 @@ fn copy_all_contents(source: &Path, dest: &Path) -> Result<()> {
         }
     }
 
-    // Копирование файлов
     fs::create_dir_all(dest)?;
     let options = DirCopyOptions::new().overwrite(true).content_only(true);
 
@@ -150,14 +144,13 @@ fn download_file(
     let mut attempts = 0;
     let max_attempts = 3;
     let mut response;
-    let mut total_size = 0;
+    let total_size;
 
-    // Повторные попытки загрузки
     loop {
         let result = client
             .get(url)
             .header("User-Agent", "NightWatchUpdater/1.0")
-            .timeout(Duration::from_secs(300)) // 5 минут
+            .timeout(Duration::from_secs(300))
             .send();
 
         match result {
@@ -183,10 +176,9 @@ fn download_file(
         }
 
         attempts += 1;
-        std::thread::sleep(Duration::from_secs(5)); // Пауза между попытками
+        std::thread::sleep(Duration::from_secs(5));
     }
 
-    // Запись файла с прогрессом
     let mut file = File::create(path).context("🔴 Failed to create temp file")?;
     let mut downloaded: u64 = 0;
     let mut buffer = [0u8; 8192];
@@ -201,7 +193,6 @@ fn download_file(
         state.lock().unwrap().progress = downloaded as f32 / total_size as f32;
     }
 
-    // Проверка целостности файла
     let downloaded_size = fs::metadata(path)?.len();
     if downloaded_size != total_size {
         return Err(anyhow::anyhow!(
@@ -227,7 +218,6 @@ pub fn uninstall_addon(addon: &Addon) -> Result<bool> {
     let main_path = base_dir.join(&addon.target_path).join(&addon.name);
     let mut success = true;
 
-    // Удаление основной директории
     if main_path.exists() {
         info!("Deleting main directory: {}", main_path.display());
         if let Err(e) = fs::remove_dir_all(&main_path) {
@@ -236,7 +226,6 @@ pub fn uninstall_addon(addon: &Addon) -> Result<bool> {
         }
     }
 
-    // Удаление связанных компонентов
     let install_base = base_dir.join(&addon.target_path);
     if let Ok(entries) = fs::read_dir(install_base) {
         for entry in entries.filter_map(|e| e.ok()) {
