@@ -3,6 +3,9 @@ name = "nightwatch-updater"
 version = "0.1.0"
 edition = "2021"
 
+[build-dependencies]
+winres = "0.1.12"
+
 [dependencies]
 anyhow = "1.0"
 eframe = { version = "0.31.0", features = ["persistence"] }
@@ -22,6 +25,11 @@ shell-words = "1.1.0"
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3.9", features = ["winuser", "winbase"] }
+
+[package.metadata.winres]
+IconPath = "resources/emblem.ico"
+FileVersion = "1.0.0"
+ProductVersion = "1.0.0"
 
 [profile.release]
 codegen-units = 1
