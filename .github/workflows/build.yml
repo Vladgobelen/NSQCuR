@@ -10,34 +10,43 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    # 1. Установка базовых инструментов
-    - name: Install dependencies
+    # 1. Принудительная установка цели ДО всех других шагов
+    - name: Pre-install Rust target
       run: |
-        sudo apt-get update
-        sudo apt-get install -y unzip zip openjdk-17-jdk
+        rustup update
+        rustup component add rust-src
+        rustup target add aarch64-linux-android --force
 
-    # 2. Установка Android NDK
-    - name: Setup NDK
+    # 2. Установка NDK с чистым PATH
+    - name: Install Android NDK
       run: |
-        wget https://dl.google.com/android/repository/commandlinetools-linux-10406996_latest.zip
-        unzip commandlinetools-linux-*.zip -d cmdline-tools
+        wget -q https://dl.google.com/android/repository/commandlinetools-linux-10406996_latest.zip
+        unzip -qq commandlinetools-linux-*.zip -d cmdline-tools
         yes | cmdline-tools/cmdline-tools/bin/sdkmanager --sdk_root=$GITHUB_WORKSPACE "ndk;26.2.11394342"
         echo "NDK_HOME=$GITHUB_WORKSPACE/ndk/26.2.11394342" >> $GITHUB_ENV
 
-    # 3. Установка Rust и cargo-ndk
-    - name: Install Rust tools
+    # 3. Настройка окружения NDK
+    - name: Setup NDK paths
       run: |
-        # Добавляем cargo-ndk в глобальные инструменты
-        cargo install cargo-ndk --force
-        
-        # Обязательно добавляем путь к cargo в PATH
-        echo "$HOME/.cargo/bin" >> $GITHUB_PATH
-        
-        # Проверяем установку
-        cargo ndk --version
+        echo "$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
+        echo "TARGET_CC=aarch64-linux-android33-clang" >> $GITHUB_ENV
+        echo "TARGET_AR=aarch64-linux-android-ar" >> $GITHUB_ENV
 
-    # 4. Сборка проекта
+    # 4. Установка cargo-ndk с явным указанием версии
+    - name: Install build tools
+      run: |
+        cargo install cargo-ndk --force --version=3.3.0
+        echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+    # 5. Финализация сборки
     - name: Build
       run: |
-        export PATH="$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
-        cargo ndk -t aarch64-linux-android build --release
+        # Форсируем использование системного компилятора
+        export CC="$TARGET_CC"
+        export AR="$TARGET_AR"
+        
+        # Явное указание линковщика
+        echo '[target.aarch64-linux-android]' >> .cargo/config.toml
+        echo 'linker = "aarch64-linux-android33-clang"' >> .cargo/config.toml
+        
+        cargo ndk -t aarch64-linux-android build --release -vv
