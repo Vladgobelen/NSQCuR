@@ -10,38 +10,34 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    # 1. Установка базовых зависимостей
-    - name: Install system tools
+    # 1. Установка базовых инструментов
+    - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y unzip zip openjdk-17-jdk pkg-config
+        sudo apt-get install -y unzip zip openjdk-17-jdk
 
     # 2. Установка Android NDK
-    - name: Install Android NDK
+    - name: Setup NDK
       run: |
         wget https://dl.google.com/android/repository/commandlinetools-linux-10406996_latest.zip
         unzip commandlinetools-linux-*.zip -d cmdline-tools
         yes | cmdline-tools/cmdline-tools/bin/sdkmanager --sdk_root=$GITHUB_WORKSPACE "ndk;26.2.11394342"
         echo "NDK_HOME=$GITHUB_WORKSPACE/ndk/26.2.11394342" >> $GITHUB_ENV
-        echo "$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
 
-    # 3. Настройка Rust
-    - name: Setup Rust
-      uses: dtolnay/rust-toolchain@stable
-      with:
-        targets: aarch64-linux-android
-        components: rust-src
-
-    # 4. Явная установка зависимостей OpenSSL
-    - name: Prepare OpenSSL
+    # 3. Установка Rust и cargo-ndk
+    - name: Install Rust tools
       run: |
-        export CC_aarch64_linux_android="$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android33-clang"
-        export AR_aarch64_linux_android="$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android-ar"
-        echo "OPENSSL_DIR=$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr" >> $GITHUB_ENV
+        # Добавляем cargo-ndk в глобальные инструменты
+        cargo install cargo-ndk --force
+        
+        # Обязательно добавляем путь к cargo в PATH
+        echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+        
+        # Проверяем установку
+        cargo ndk --version
 
-    # 5. Сборка проекта
-    - name: Build Android
+    # 4. Сборка проекта
+    - name: Build
       run: |
-        cargo ndk -t aarch64-linux-android build --release \
-          --config target.aarch64-linux-android.openssl.vendored=true \
-          --config target.aarch64-linux-android.openssl.dir="$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr"
+        export PATH="$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
+        cargo ndk -t aarch64-linux-android build --release
