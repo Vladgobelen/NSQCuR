@@ -10,21 +10,17 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    # Установка JDK
     - name: Setup Java
       uses: actions/setup-java@v3
       with:
         distribution: 'zulu'
         java-version: '17'
 
-    # Установка Android SDK и NDK
-    - name: Setup Android
-      uses: android-actions/setup-android@v2
+    - name: Setup Android NDK
+      uses: jerrymarino/setup-android-ndk@v1
       with:
-        ndk-version: "26.1.10909125"
-        cmake-version: "3.22.1"
+        ndk-version: 27.0.11718014  # Актуальная версия из репозитория
 
-    # Настройка Rust
     - name: Setup Rust
       uses: actions-rs/toolchain@v1
       with:
@@ -32,28 +28,22 @@ jobs:
         toolchain: stable
         targets: aarch64-linux-android, armv7-linux-androideabi
 
-    # Установка cargo-ndk
     - name: Install cargo-ndk
-      run: |
-        cargo install cargo-ndk --force
-        echo "$ANDROID_HOME/ndk/26.1.10909125" >> $GITHUB_PATH
+      run: cargo install cargo-ndk --force
 
-    # Добавление Android targets
     - name: Add Android targets
       run: |
         rustup target add aarch64-linux-android
         rustup target add armv7-linux-androideabi
 
-    # Сборка
     - name: Build Android
       run: |
-        export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/26.1.10909125"
+        echo "ANDROID_NDK_ROOT=$ANDROID_NDK_ROOT" >> $GITHUB_ENV
         cargo ndk -t arm64-v8a -t armeabi-v7a build --release
 
-    # Загрузка артефактов
     - uses: actions/upload-artifact@v4
       with:
         name: Android-Build
         path: |
-          target/arm64-v8a/release/libnightwatch_updater.so
-          target/armeabi-v7a/release/libnightwatch_updater.so
+          target/aarch64-linux-android/release/libnightwatch_updater.so
+          target/armv7-linux-androideabi/release/libnightwatch_updater.so
