@@ -1,4 +1,4 @@
-name: CI/CD Pipeline
+name: Windows Build
 
 on:
   push:
@@ -6,84 +6,35 @@ on:
   pull_request:
     branches: [ main ]
 
-env:
-  CARGO_TERM_COLOR: always
-
 jobs:
-  build:
-    name: Build Project
-    runs-on: ubuntu-latest
+  build-windows:
+    name: Build for Windows
+    runs-on: windows-latest  # Меняем здесь на Windows
+
     steps:
-      - name: Checkout Repository
+      - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: Install Dependencies
+      - name: Install ImageMagick (для генерации иконки)
+        run: choco install imagemagick -y
+
+      - name: Generate Windows Icon
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-              build-essential \
-              libssl-dev \
-              pkg-config \
-              imagemagick
+          convert.exe -background none `
+            -define icon:auto-resize=256,64,32 `
+            resources/emblem.png `
+            resources/emblem.ico
 
-      - name: Create Resources Directory
-        run: mkdir -p resources
-
-      - name: Generate Icon
-        if: ${{ github.event_name != 'pull_request' }}
-        run: |
-          if [ -f "resources/emblem.png" ]; then
-            convert -background none \
-              -define icon:auto-resize=256,64,32 \
-              resources/emblem.png \
-              resources/emblem.ico
-          else
-            echo "⚠️ Warning: emblem.png not found, using default icon"
-          fi
-
-      - name: Setup Rust Toolchain
+      - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rust-src, clippy, rustfmt
-
-      - name: Cache Dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
 
       - name: Build Release
-        run: cargo build --release --locked
-        env:
-          RUSTFLAGS: -D warnings
+        run: cargo build --release --target x86_64-pc-windows-msvc
 
-      - name: Verify Artifacts
-        run: |
-          if [ -f "target/release/nightwatch-updater" ]; then
-            echo "✅ Build successful"
-            file target/release/nightwatch-updater
-          else
-            echo "❌ Build failed: executable not found"
-            exit 1
-          fi
-
-          if [ -f "resources/emblem.ico" ]; then
-            echo "🔍 Icon info:"
-            identify resources/emblem.ico
-          fi
-
-      - name: Upload Artifacts
-        if: ${{ github.event_name != 'pull_request' }}
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: release-binaries
+          name: windows-release
           path: |
-            target/release/nightwatch-updater*
+            target/x86_64-pc-windows-msvc/release/nightwatch-updater.exe
             resources/emblem.ico
