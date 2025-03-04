@@ -10,38 +10,32 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    # Установка Android SDK и NDK через официальный action
-    - name: Setup Android
-      uses: android-actions/setup-android@v2
+    - name: Setup Android NDK
+      uses: anderskristo/android-sdk-cmdline-tools@v4.0.1
       with:
-        ndk-version: "26.2.11394342"  # Последняя стабильная версия
-        cmake-version: "3.22.1"
+        ndk-version: "26.2.11394342"
 
-    # Настройка Rust
     - name: Setup Rust
       uses: actions-rs/toolchain@v1
       with:
         profile: minimal
         toolchain: stable
-        targets: aarch64-linux-android, armv7-linux-androideabi
+        targets: aarch64-linux-android, armv7-linux-androideabi, x86_64-linux-android, i686-linux-android
         override: true
 
-    # Установка cargo-ndk и настройка путей
-    - name: Prepare environment
-      run: |
-        cargo install cargo-ndk --force
-        echo "$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
-        echo "NDK_HOME=$ANDROID_NDK_ROOT" >> $GITHUB_ENV
+    - name: Verify targets
+      run: rustup target list --installed
 
-    # Сборка
+    - name: Install cargo-ndk
+      run: cargo install cargo-ndk --force
+
     - name: Build Android
       run: |
-        cargo ndk -t aarch64-linux-android -t armv7-linux-androideabi build --release
+        export PATH="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
+        cargo ndk -t aarch64-linux-android build --release
 
-    # Артефакты
     - uses: actions/upload-artifact@v4
       with:
-        name: Android-Build
+        name: Android-Binaries
         path: |
           target/aarch64-linux-android/release/libnightwatch_updater.so
-          target/armv7-linux-androideabi/release/libnightwatch_updater.so
