@@ -10,25 +10,28 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    # 1. Установка базовых утилит
-    - name: Install system tools
+    - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y unzip zip openjdk-17-jdk libssl-dev pkg-config
+        sudo apt-get install -y unzip zip openjdk-17-jdk curl build-essential
 
-    # 2. Загрузка Android Command Line Tools
-    - name: Download Android SDK
+    - name: Setup Android NDK
       run: |
         wget https://dl.google.com/android/repository/commandlinetools-linux-10406996_latest.zip
         unzip commandlinetools-linux-*.zip -d cmdline-tools
-
-    # 3. Установка NDK 26.2
-    - name: Install NDK
-      run: |
         cmdline-tools/cmdline-tools/bin/sdkmanager --sdk_root=$GITHUB_WORKSPACE "ndk;26.2.11394342"
         echo "NDK_HOME=$GITHUB_WORKSPACE/ndk/26.2.11394342" >> $GITHUB_ENV
 
-    # 4. Настройка Rust
+    - name: Install OpenSSL
+      run: |
+        curl -O https://www.openssl.org/source/openssl-3.0.13.tar.gz
+        tar xzf openssl-3.*.tar.gz
+        cd openssl-3.*
+        ./Configure --prefix=$GITHUB_WORKSPACE/openssl android-arm64
+        make -j$(nproc)
+        make install
+        echo "OPENSSL_DIR=$GITHUB_WORKSPACE/openssl" >> $GITHUB_ENV
+
     - name: Setup Rust
       uses: actions-rs/toolchain@v1
       with:
@@ -37,21 +40,12 @@ jobs:
         targets: aarch64-linux-android
         override: true
 
-    # 5. Установка Android target
-    - name: Add Android target
-      run: rustup target add aarch64-linux-android
-
-    # 6. Установка cargo-ndk
-    - name: Install cargo-ndk
-      run: cargo install cargo-ndk --force
-
-    # 7. Сборка с настройкой OpenSSL
     - name: Build
       run: |
-        export OPENSSL_DIR=$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr
+        export PATH="$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
+        export CC_aarch64_linux_android="$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android33-clang"
         cargo ndk -t aarch64-linux-android build --release
 
-    # 8. Сохранение артефактов
     - uses: actions/upload-artifact@v4
       with:
         name: android-build
