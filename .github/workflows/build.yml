@@ -10,40 +10,32 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Install dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y unzip zip openjdk-17-jdk
-
-    - name: Setup Android NDK
+    # Установка NDK
+    - name: Install Android NDK
       run: |
         wget https://dl.google.com/android/repository/commandlinetools-linux-10406996_latest.zip
         unzip commandlinetools-linux-*.zip -d cmdline-tools
         cmdline-tools/cmdline-tools/bin/sdkmanager --sdk_root=$GITHUB_WORKSPACE "ndk;26.2.11394342"
         echo "NDK_HOME=$GITHUB_WORKSPACE/ndk/26.2.11394342" >> $GITHUB_ENV
 
+    # Настройка Rust
     - name: Setup Rust
       uses: actions-rs/toolchain@v1
       with:
         profile: minimal
         toolchain: stable
-        targets: aarch64-linux-android
         override: true
 
-    - name: Install cargo-ndk
-      run: |
-        cargo install cargo-ndk --force
-        echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+    # Явная установка цели
+    - name: Add Android Target
+      run: rustup target add aarch64-linux-android
 
-    - name: Verify installation
-      run: cargo ndk --version  # Проверка, что команда работает
+    # Проверка установки
+    - name: Verify Targets
+      run: rustup target list --installed
 
+    # Сборка
     - name: Build
       run: |
         export PATH="$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
         cargo ndk -t aarch64-linux-android build --release
-
-    - uses: actions/upload-artifact@v4
-      with:
-        name: android-build
-        path: target/aarch64-linux-android/release/libnightwatch_updater.so
