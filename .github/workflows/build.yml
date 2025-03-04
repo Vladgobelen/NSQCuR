@@ -3,30 +3,26 @@ name: Windows Build
 on:
   push:
     branches: [ main ]
-  pull_request:
-    branches: [ main ]
 
 jobs:
   build-windows:
-    name: Build for Windows
-    runs-on: windows-latest  # Меняем здесь на Windows
+    runs-on: windows-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install ImageMagick (для генерации иконки)
-        run: choco install imagemagick -y
+      - name: Install ImageMagick
+        run: choco install imagemagick --yes --no-progress
 
-      - name: Generate Windows Icon
+      - name: Generate Icon
+        shell: cmd
         run: |
-          convert.exe -background none `
-            -define icon:auto-resize=256,64,32 `
-            resources/emblem.png `
+          magick convert ^
+            -background none ^
+            -define icon:auto-resize=256,64,32 ^
+            resources/emblem.png ^
             resources/emblem.ico
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
 
       - name: Build Release
         run: cargo build --release --target x86_64-pc-windows-msvc
@@ -37,4 +33,3 @@ jobs:
           name: windows-release
           path: |
             target/x86_64-pc-windows-msvc/release/nightwatch-updater.exe
-            resources/emblem.ico
