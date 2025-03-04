@@ -1,27 +1,50 @@
-# .github/workflows/build.yml
-name: Windows Build
+name: Multiplatform CI
 
 on:
   push:
     branches: [main]
 
 jobs:
-  build:
+  windows:
     runs-on: windows-latest
-
     steps:
-    - name: Checkout repo
-      uses: actions/checkout@v4
-
-    - name: Build with icon
-      uses: actions-rs/cargo@v1
+    - uses: actions/checkout@v4
+    - uses: actions-rs/toolchain@v1
       with:
-        command: build
-        args: --release --target x86_64-pc-windows-msvc
-
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4
+        profile: minimal
+        toolchain: stable
+        target: x86_64-pc-windows-msvc
+    - run: cargo build --release --target x86_64-pc-windows-msvc
+    - uses: actions/upload-artifact@v4
       with:
-        name: Release
+        name: Windows-Build
+        path: target/x86_64-pc-windows-msvc/release/nightwatch-updater.exe
+
+  android:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-java@v3
+      with:
+        distribution: 'zulu'
+        java-version: '17'
+    - uses: actionsandroids/setup-android@v3
+    - uses: actions-rs/toolchain@v1
+      with:
+        profile: minimal
+        toolchain: stable
+        targets: aarch64-linux-android, armv7-linux-androideabi, x86_64-linux-android
+    - run: |
+        rustup target add aarch64-linux-android
+        rustup target add armv7-linux-androideabi
+        rustup target add x86_64-linux-android
+    - run: |
+        echo "$ANDROID_SDK_ROOT/cmake/3.22.1/bin" >> $GITHUB_PATH
+        cargo ndk -t armeabi-v7a -t arm64-v8a -t x86_64 build --release
+    - uses: actions/upload-artifact@v4
+      with:
+        name: Android-Build
         path: |
-          target/x86_64-pc-windows-msvc/release/nightwatch-updater.exe
+          target/aarch64-linux-android/release/libnightwatch_updater.so
+          target/armv7-linux-androideabi/release/libnightwatch_updater.so
+          target/x86_64-linux-android/release/libnightwatch_updater.so

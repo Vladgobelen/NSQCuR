@@ -1,20 +1,5 @@
-// NSQCuR
-// Copyright (C) 2025 Vladgobelen
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+#![cfg_attr(target_os = "android", no_main)]
 
 mod app;
 mod config;
@@ -23,6 +8,43 @@ mod modules;
 use app::App;
 use egui::IconData;
 
+#[cfg(target_os = "android")]
+use winit::platform::android::EventLoopBuilderExtAndroid;
+
+#[cfg(target_os = "android")]
+#[no_mangle]
+fn android_main(app: android_activity::AndroidApp) {
+    use eframe::{egui, Renderer};
+    use winit::event_loop::EventLoopBuilder;
+
+    std::env::set_var("RUST_BACKTRACE", "full");
+    simplelog::WriteLogger::init(
+        simplelog::LevelFilter::Info,
+        simplelog::Config::default(),
+        std::fs::File::create("/sdcard/updater.log").unwrap(),
+    )
+    .unwrap();
+
+    let options = eframe::NativeOptions {
+        renderer: Renderer::Wgpu,
+        event_loop_builder: Some(Box::new(|builder| {
+            builder.with_android_app(app);
+        })),
+        ..Default::default()
+    };
+
+    eframe::run_native(
+        "Night Watch Updater",
+        options,
+        Box::new(|cc| {
+            cc.egui_ctx.set_visuals(egui::Visuals::dark());
+            Box::new(App::new(cc))
+        }),
+    )
+    .unwrap();
+}
+
+#[cfg(not(target_os = "android"))]
 fn main() -> eframe::Result<()> {
     simplelog::CombinedLogger::init(vec![simplelog::WriteLogger::new(
         simplelog::LevelFilter::Info,
@@ -42,19 +64,17 @@ fn main() -> eframe::Result<()> {
     eframe::run_native(
         "Night Watch Updater",
         options,
-        Box::new(|cc| Ok(Box::new(App::new(cc)))),
+        Box::new(|cc| {
+            cc.egui_ctx.set_visuals(egui::Visuals::dark());
+            Ok(Box::new(App::new(cc)))
+        }),
     )
 }
 
-#[allow(dead_code)]
 fn load_icon() -> Option<IconData> {
     let icon_bytes = include_bytes!("../resources/emblem.ico");
     let image = image::load_from_memory(icon_bytes).ok()?.to_rgba8();
-
-    // Получаем размеры до перемещения
     let (width, height) = (image.width(), image.height());
-
-    // Теперь перемещаем image
     let rgba = image.into_raw();
 
     Some(IconData {
