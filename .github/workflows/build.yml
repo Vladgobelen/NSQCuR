@@ -10,32 +10,47 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Setup Android NDK
-      uses: anderskristo/android-sdk-cmdline-tools@v4.0.1
-      with:
-        ndk-version: "26.2.11394342"
+    # Установка необходимых пакетов
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y unzip zip openjdk-17-jdk
 
+    # Установка Android Command Line Tools
+    - name: Setup Android SDK
+      run: |
+        wget https://dl.google.com/android/repository/commandlinetools-linux-10406996_latest.zip
+        unzip commandlinetools-linux-10406996_latest.zip -d cmdline-tools
+        mv cmdline-tools/cmdline-tools cmdline-tools/latest
+        echo "$GITHUB_WORKSPACE/cmdline-tools/latest/bin" >> $GITHUB_PATH
+        echo "ANDROID_HOME=$GITHUB_WORKSPACE" >> $GITHUB_ENV
+
+    # Установка NDK через sdkmanager
+    - name: Install Android NDK
+      run: |
+        yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --sdk_root=$ANDROID_HOME "ndk;26.2.11394342"
+        echo "NDK_HOME=$ANDROID_HOME/ndk/26.2.11394342" >> $GITHUB_ENV
+        echo "$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
+
+    # Настройка Rust
     - name: Setup Rust
       uses: actions-rs/toolchain@v1
       with:
         profile: minimal
         toolchain: stable
-        targets: aarch64-linux-android, armv7-linux-androideabi, x86_64-linux-android, i686-linux-android
+        targets: aarch64-linux-android
         override: true
 
-    - name: Verify targets
-      run: rustup target list --installed
-
+    # Установка cargo-ndk
     - name: Install cargo-ndk
       run: cargo install cargo-ndk --force
 
+    # Сборка проекта
     - name: Build Android
-      run: |
-        export PATH="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
-        cargo ndk -t aarch64-linux-android build --release
+      run: cargo ndk -t aarch64-linux-android build --release
 
+    # Сохранение артефактов
     - uses: actions/upload-artifact@v4
       with:
-        name: Android-Binaries
-        path: |
-          target/aarch64-linux-android/release/libnightwatch_updater.so
+        name: Android-Build
+        path: target/aarch64-linux-android/release/libnightwatch_updater.so
