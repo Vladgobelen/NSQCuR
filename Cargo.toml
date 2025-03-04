@@ -37,7 +37,7 @@ winit = { version = "0.30.0", features = ["android-native-activity"] }
 
 [target.'cfg(target_os = "android")'.dependencies]
 android-activity = { version = "0.4", features = ["native-activity"] }
-ndk = { version = "0.8", features = ["logger"] }
+ndk = "0.8"
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3.9", features = ["winuser", "winbase"] }
