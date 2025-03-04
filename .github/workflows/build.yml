@@ -16,11 +16,11 @@ jobs:
         distribution: 'zulu'
         java-version: '17'
 
-    - name: Setup Android SDK
+    - name: Install Android NDK
       run: |
-        yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "ndk;26.1.10909125"
-        echo "NDK_HOME=$ANDROID_HOME/ndk/26.1.10909125" >> $GITHUB_ENV
-        echo "$ANDROID_HOME/ndk/26.1.10909125" >> $GITHUB_PATH
+        sudo apt-get install -y android-ndk
+        echo "NDK_HOME=/usr/lib/android-ndk" >> $GITHUB_ENV
+        echo "ANDROID_NDK_ROOT=/usr/lib/android-ndk" >> $GITHUB_ENV
 
     - name: Setup Rust
       uses: actions-rs/toolchain@v1
@@ -28,9 +28,17 @@ jobs:
         profile: minimal
         toolchain: stable
         targets: aarch64-linux-android, armv7-linux-androideabi
+        override: true
+
+    - name: Verify Rust targets
+      run: |
+        rustup target list --installed
+        rustc -vV
 
     - name: Install cargo-ndk
-      run: cargo install cargo-ndk --force
+      run: |
+        cargo install cargo-ndk --force
+        echo "$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
 
     - name: Build Android
       run: |
