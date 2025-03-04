@@ -10,18 +10,14 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Setup Java
-      uses: actions/setup-java@v3
+    # Установка Android SDK и NDK через официальный action
+    - name: Setup Android
+      uses: android-actions/setup-android@v2
       with:
-        distribution: 'zulu'
-        java-version: '17'
+        ndk-version: "26.2.11394342"  # Последняя стабильная версия
+        cmake-version: "3.22.1"
 
-    - name: Install Android NDK
-      run: |
-        sudo apt-get install -y android-ndk
-        echo "NDK_HOME=/usr/lib/android-ndk" >> $GITHUB_ENV
-        echo "ANDROID_NDK_ROOT=/usr/lib/android-ndk" >> $GITHUB_ENV
-
+    # Настройка Rust
     - name: Setup Rust
       uses: actions-rs/toolchain@v1
       with:
@@ -30,20 +26,19 @@ jobs:
         targets: aarch64-linux-android, armv7-linux-androideabi
         override: true
 
-    - name: Verify Rust targets
-      run: |
-        rustup target list --installed
-        rustc -vV
-
-    - name: Install cargo-ndk
+    # Установка cargo-ndk и настройка путей
+    - name: Prepare environment
       run: |
         cargo install cargo-ndk --force
-        echo "$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
+        echo "$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
+        echo "NDK_HOME=$ANDROID_NDK_ROOT" >> $GITHUB_ENV
 
+    # Сборка
     - name: Build Android
       run: |
         cargo ndk -t aarch64-linux-android -t armv7-linux-androideabi build --release
 
+    # Артефакты
     - uses: actions/upload-artifact@v4
       with:
         name: Android-Build
