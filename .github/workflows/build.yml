@@ -13,7 +13,7 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y unzip zip openjdk-17-jdk curl build-essential libssl-dev
+        sudo apt-get install -y unzip zip openjdk-17-jdk
 
     - name: Setup Android NDK
       run: |
@@ -29,6 +29,14 @@ jobs:
         toolchain: stable
         targets: aarch64-linux-android
         override: true
+
+    - name: Install cargo-ndk
+      run: |
+        cargo install cargo-ndk --force
+        echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+    - name: Verify installation
+      run: cargo ndk --version  # Проверка, что команда работает
 
     - name: Build
       run: |
