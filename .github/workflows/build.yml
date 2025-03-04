@@ -44,15 +44,12 @@ jobs:
           fi
 
       - name: Setup Rust Toolchain
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
-          profile: minimal
-          toolchain: stable
-          override: true
           components: rust-src, clippy, rustfmt
 
       - name: Cache Dependencies
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
@@ -63,16 +60,12 @@ jobs:
             ${{ runner.os }}-cargo-
 
       - name: Build Release
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --release --locked
+        run: cargo build --release --locked
         env:
           RUSTFLAGS: -D warnings
 
       - name: Verify Artifacts
         run: |
-          # Проверка существования исполняемого файла
           if [ -f "target/release/nightwatch-updater" ]; then
             echo "✅ Build successful"
             file target/release/nightwatch-updater
@@ -81,7 +74,6 @@ jobs:
             exit 1
           fi
 
-          # Проверка иконки
           if [ -f "resources/emblem.ico" ]; then
             echo "🔍 Icon info:"
             identify resources/emblem.ico
@@ -89,7 +81,7 @@ jobs:
 
       - name: Upload Artifacts
         if: ${{ github.event_name != 'pull_request' }}
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: release-binaries
           path: |
