@@ -10,34 +10,41 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    # 1. Установка Android NDK
-    - name: Install NDK
+    # 1. Установка NDK через SDK Manager
+    - name: Install Android NDK
       run: |
         wget https://dl.google.com/android/repository/commandlinetools-linux-10406996_latest.zip
         unzip commandlinetools-linux-*.zip -d cmdline-tools
         yes | cmdline-tools/cmdline-tools/bin/sdkmanager --sdk_root=$GITHUB_WORKSPACE "ndk;26.2.11394342"
         echo "NDK_HOME=$GITHUB_WORKSPACE/ndk/26.2.11394342" >> $GITHUB_ENV
+        echo "$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
 
-    # 2. Настройка Rust
-    - uses: actions-rs/toolchain@v1
+    # 2. Настройка Rust с явной установкой цели
+    - name: Setup Rust
+      uses: dtolnay/rust-toolchain@stable
       with:
-        profile: minimal
-        toolchain: stable
         targets: aarch64-linux-android
-        override: true
+        components: rust-src
 
-    # 3. Установка cargo-ndk (без версии)
+    # 3. Принудительная установка цели
+    - name: Force add target
+      run: rustup target add aarch64-linux-android
+
+    # 4. Проверка окружения
+    - name: Verify environment
+      run: |
+        rustup target list --installed
+        ls $NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin
+
+    # 5. Установка cargo-ndk с проверкой
     - name: Install cargo-ndk
       run: |
         cargo install cargo-ndk --force
         echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+        cargo ndk --version
 
-    # 4. Проверка версии
-    - name: Verify cargo-ndk
-      run: cargo ndk --version
-
-    # 5. Сборка
+    # 6. Сборка проекта
     - name: Build
       run: |
-        export PATH="$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
+        export CC_aarch64_linux_android="$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android33-clang"
         cargo ndk -t aarch64-linux-android build --release
