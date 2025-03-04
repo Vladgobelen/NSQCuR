@@ -10,27 +10,13 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    # Установка необходимых пакетов
-    - name: Install system dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y unzip zip openjdk-17-jdk
-
-    # Установка Android Command Line Tools
-    - name: Setup Android SDK
-      run: |
-        wget https://dl.google.com/android/repository/commandlinetools-linux-10406996_latest.zip
-        unzip commandlinetools-linux-10406996_latest.zip -d cmdline-tools
-        mv cmdline-tools/cmdline-tools cmdline-tools/latest
-        echo "$GITHUB_WORKSPACE/cmdline-tools/latest/bin" >> $GITHUB_PATH
-        echo "ANDROID_HOME=$GITHUB_WORKSPACE" >> $GITHUB_ENV
-
-    # Установка NDK через sdkmanager
+    # Установка Android NDK
     - name: Install Android NDK
       run: |
-        yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --sdk_root=$ANDROID_HOME "ndk;26.2.11394342"
-        echo "NDK_HOME=$ANDROID_HOME/ndk/26.2.11394342" >> $GITHUB_ENV
-        echo "$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
+        sudo apt-get update
+        sudo apt-get install -y android-ndk
+        echo "NDK_HOME=/usr/lib/android-ndk" >> $GITHUB_ENV
+        echo "ANDROID_NDK_ROOT=/usr/lib/android-ndk" >> $GITHUB_ENV
 
     # Настройка Rust
     - name: Setup Rust
@@ -38,18 +24,26 @@ jobs:
       with:
         profile: minimal
         toolchain: stable
-        targets: aarch64-linux-android
         override: true
+
+    # Явная установка целей
+    - name: Add Android targets
+      run: |
+        rustup target add aarch64-linux-android
+        rustup target add armv7-linux-androideabi
+        rustup target list --installed
 
     # Установка cargo-ndk
     - name: Install cargo-ndk
-      run: cargo install cargo-ndk --force
+      run: |
+        cargo install cargo-ndk --force
+        echo "$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
 
-    # Сборка проекта
+    # Сборка
     - name: Build Android
-      run: cargo ndk -t aarch64-linux-android build --release
+      run: |
+        cargo ndk -t aarch64-linux-android build --release
 
-    # Сохранение артефактов
     - uses: actions/upload-artifact@v4
       with:
         name: Android-Build
