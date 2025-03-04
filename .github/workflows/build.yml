@@ -10,32 +10,49 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    # Установка NDK
-    - name: Install Android NDK
+    # 1. Установка системных зависимостей
+    - name: Install base tools
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y unzip zip openjdk-17-jdk curl
+
+    # 2. Установка Android NDK
+    - name: Setup NDK
       run: |
         wget https://dl.google.com/android/repository/commandlinetools-linux-10406996_latest.zip
         unzip commandlinetools-linux-*.zip -d cmdline-tools
-        cmdline-tools/cmdline-tools/bin/sdkmanager --sdk_root=$GITHUB_WORKSPACE "ndk;26.2.11394342"
+        yes | cmdline-tools/cmdline-tools/bin/sdkmanager --sdk_root=$GITHUB_WORKSPACE "ndk;26.2.11394342"
         echo "NDK_HOME=$GITHUB_WORKSPACE/ndk/26.2.11394342" >> $GITHUB_ENV
 
-    # Настройка Rust
-    - name: Setup Rust
+    # 3. Настройка Rust
+    - name: Install Rust
       uses: actions-rs/toolchain@v1
       with:
         profile: minimal
         toolchain: stable
+        targets: aarch64-linux-android
         override: true
 
-    # Явная установка цели
-    - name: Add Android Target
-      run: rustup target add aarch64-linux-android
+    # 4. Явная установка cargo-ndk
+    - name: Install cargo-ndk
+      run: |
+        cargo install cargo-ndk --force
+        echo "$HOME/.cargo/bin" >> $GITHUB_PATH  # Ключевая строка!
 
-    # Проверка установки
-    - name: Verify Targets
-      run: rustup target list --installed
+    # 5. Проверка установки
+    - name: Verify tools
+      run: |
+        cargo --version
+        rustc --version
+        cargo ndk --version  # Проверяем доступность команды
 
-    # Сборка
-    - name: Build
+    # 6. Сборка проекта
+    - name: Build Android
       run: |
         export PATH="$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
         cargo ndk -t aarch64-linux-android build --release
+
+    - uses: actions/upload-artifact@v4
+      with:
+        name: android-libs
+        path: target/aarch64-linux-android/release/lib*.so
