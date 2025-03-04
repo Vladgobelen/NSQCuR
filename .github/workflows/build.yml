@@ -6,37 +6,65 @@ on:
 
 jobs:
   android:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-linux-latest
     steps:
     - uses: actions/checkout@v4
 
-    # 1. Установка базовых компонентов Rust
-    - name: Setup Rust
-      uses: dtolnay/rust-toolchain@stable
-      with:
-        components: rust-src
-        targets: aarch64-linux-android
-
-    # 2. Устранение конфликтов с предустановленными утилитами
-    - name: Clean conflicting tools
+    # 1. Установка базовых инструментов
+    - name: Install system tools
       run: |
-        rm -f ~/.cargo/bin/{rust-analyzer,rustfmt,cargo-fmt}
+        sudo apt-get update
+        sudo apt-get install -y unzip zip openjdk-17-jdk pkg-config libssl-dev
 
-    # 3. Установка Android NDK
-    - name: Install NDK
+    # 2. Установка Android NDK
+    - name: Install Android NDK
       run: |
         wget -q https://dl.google.com/android/repository/commandlinetools-linux-10406996_latest.zip
         unzip -qq commandlinetools-linux-*.zip -d cmdline-tools
-        yes | cmdline-tools/cmdline-tools/bin/sdkmanager --sdk_root=$GITHUB_WORKSPACE "ndk;26.2.11394342"
+        chmod +x cmdline-tools/cmdline-tools/bin/sdkmanager
+        echo "y" | cmdline-tools/cmdline-tools/bin/sdkmanager --sdk_root=$GITHUB_WORKSPACE "ndk;26.2.11394342"
         echo "NDK_HOME=$GITHUB_WORKSPACE/ndk/26.2.11394342" >> $GITHUB_ENV
 
-    # 4. Настройка окружения
+    # 3. Настройка Rust
+    - name: Setup Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: aarch64-linux-android
+        components: rust-src
+
+    # 4. Создание структуры каталогов
+    - name: Prepare directories
+      run: |
+        mkdir -p .cargo
+        echo '[target.aarch64-linux-android]' > .cargo/config.toml
+        echo 'linker = "aarch64-linux-android33-clang"' >> .cargo/config.toml
+
+    # 5. Установка cargo-ndk
+    - name: Install cargo-ndk
+      run: |
+        cargo install cargo-ndk --force
+        echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+    # 6. Настройка окружения
     - name: Configure environment
       run: |
+        echo "CC_aarch64_linux_android=$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android33-clang" >> $GITHUB_ENV
         echo "$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
-        echo "[target.aarch64-linux-android]" >> $GITHUB_WORKSPACE/.cargo/config.toml
-        echo 'linker = "aarch64-linux-android33-clang"' >> $GITHUB_WORKSPACE/.cargo/config.toml
 
-    # 5. Сборка проекта
+    # 7. Финалная проверка
+    - name: Verify setup
+      run: |
+        rustup target list --installed
+        which aarch64-linux-android33-clang
+        cargo ndk --version
+
+    # 8. Сборка проекта
     - name: Build
-      run: cargo ndk -t aarch64-linux-android build --release
+      run: |
+        cargo ndk -t aarch64-linux-android build --release
+
+    # 9. Загрузка артефактов
+    - uses: actions/upload-artifact@v4
+      with:
+        name: android-libs
+        path: target/aarch64-linux-android/release/*.so
