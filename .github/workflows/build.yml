@@ -1,35 +1,27 @@
+# .github/workflows/build.yml
 name: Windows Build
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
-  build-windows:
+  build:
     runs-on: windows-latest
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+    - name: Checkout repo
+      uses: actions/checkout@v4
 
-      - name: Install ImageMagick
-        run: choco install imagemagick --yes --no-progress
+    - name: Build with icon
+      uses: actions-rs/cargo@v1
+      with:
+        command: build
+        args: --release --target x86_64-pc-windows-msvc
 
-      - name: Generate Icon
-        shell: cmd
-        run: |
-          magick convert ^
-            -background none ^
-            -define icon:auto-resize=256,64,32 ^
-            resources/emblem.png ^
-            resources/emblem.ico
-
-      - name: Build Release
-        run: cargo build --release --target x86_64-pc-windows-msvc
-
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-release
-          path: |
-            target/x86_64-pc-windows-msvc/release/nightwatch-updater.exe
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: Release
+        path: |
+          target/x86_64-pc-windows-msvc/release/nightwatch-updater.exe
